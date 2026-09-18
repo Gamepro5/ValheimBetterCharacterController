@@ -48,16 +48,20 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Message: BetterCharacterController] BetterCharacterController 1.0.4 loaded. melee aim=True lean=True dive=True firstPerson=True
+[Info   : BetterCharacterController] BetterCharacterController 1.0.6 loaded.
 ```
 
 If that line is missing, the plugin is not loading and nothing in the config will change
-anything — check the DLL really is in `BepInEx/plugins`. Entering and leaving first person is
-logged too, with the reason for leaving:
+anything — check the DLL really is in `BepInEx/plugins`. **Check the version in that line before
+debugging anything else**: a stale DLL behaves exactly like a mod that ignores your fixes.
+
+With `debugLogging = true` you additionally get the list of patched methods, and first person
+reports each transition and why it declined to engage:
 
 ```
 first person on: zoom 0.42 (leaves above 1.20)
 first person off: zoom 1.35 > 1.20
+fp idle: zoom 2.30 > 0.60 | distance=2.30 minDistance=0.00 enterAt=0.60 allowFullZoom=True
 ```
 
 Startup also warns if a conflicting plugin is loaded — notably this mod's predecessor

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.6
+
+Quiet by default. With first person confirmed working, the diagnostics added while chasing it
+are no longer worth writing to everyone's log every session:
+
+* Startup logs a single `BetterCharacterController 1.0.6 loaded.` line. The version is kept in
+  it deliberately - a stale DLL is otherwise invisible, and that cost a long debugging detour.
+* The patched-method list and the first-person enter/leave lines now require
+  `debugLogging = true`, as the lean, dive and camera heartbeats already did.
+* Still unconditional, because each only appears when something is actually wrong: conflicting
+  plugin warnings, a missing `GameCamera.LateUpdate` patch, the body-still-hidden failsafe, and
+  feature faults.
+
 ## 1.0.5
 
 Instrumentation, because "first person does nothing and logs nothing" was ambiguous between

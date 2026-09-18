@@ -139,7 +139,7 @@ namespace BetterCharacterController
                 {
                     if (FirstPersonActive)
                     {
-                        Plugin.Log.LogInfo($"first person off: {blocker}");
+                        if (Plugin.DebugLogging.Value) Plugin.Log.LogInfo($"first person off: {blocker}");
                         Exit(cam);
                     }
                     else if (_hidden.Count > 0)
@@ -157,7 +157,8 @@ namespace BetterCharacterController
                 {
                     FirstPersonActive = true;
                     _hasSmoothed = false;
-                    Plugin.Log.LogInfo($"first person on: zoom {distance:F2} (leaves above {leaveAt:F2})");
+                    if (Plugin.DebugLogging.Value)
+                        Plugin.Log.LogInfo($"first person on: zoom {distance:F2} (leaves above {leaveAt:F2})");
                     if (cam != null) _savedNearClip = cam.nearClipPlane;
                     if (_savedNearClipMin < 0f) _savedNearClipMin = NearClipMinRef(__instance);
                 }

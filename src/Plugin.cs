@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.0.5";
+        public const string Version = "1.0.6";
 
         internal static ManualLogSource Log;
 
@@ -318,23 +318,23 @@ namespace BetterCharacterController
             harmony.PatchAll(typeof(FirstPersonCamera));
             harmony.PatchAll(typeof(EquipmentWatcher));
 
-            // Deliberately a Message, not Info: this is the line to look for when diagnosing
-            // "the mod does nothing", and it should be impossible to miss in the log.
-            Logger.LogMessage($"{Name} {Version} loaded. " +
-                              $"melee aim={MeleeAimEnabled.Value} lean={LeanEnabled.Value} " +
-                              $"dive={DiveEnabled.Value} firstPerson={FpEnabled.Value}");
+            // One line, naming the version so a stale DLL is identifiable at a glance.
+            Logger.LogInfo($"{Name} {Version} loaded.");
 
-            // A patch that silently failed to apply looks identical to a feature that is not
-            // working, so list what actually got patched rather than assuming it all did.
+            // A patch that silently fails to apply is indistinguishable from a feature that does
+            // not work, so the full list is available under debugLogging - but a missing camera
+            // hook is always worth a warning, since first person cannot function without it.
             try
             {
                 var patched = new List<string>();
                 foreach (MethodBase m in harmony.GetPatchedMethods())
                     patched.Add($"{m.DeclaringType?.Name}.{m.Name}");
                 patched.Sort();
-                Logger.LogMessage($"patched {patched.Count} methods: {string.Join(", ", patched)}");
 
-                if (!patched.Contains("GameCamera.LateUpdate"))
+                if (DebugLogging.Value)
+                    Logger.LogInfo($"patched {patched.Count} methods: {string.Join(", ", patched)}");
+
+                if (FpEnabled.Value && !patched.Contains("GameCamera.LateUpdate"))
                     Logger.LogWarning("GameCamera.LateUpdate is NOT patched - first person cannot work.");
             }
             catch (Exception e)
