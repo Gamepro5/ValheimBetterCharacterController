@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.0.6";
+        public const string Version = "1.0";
 
         internal static ManualLogSource Log;
 
