@@ -36,7 +36,7 @@ namespace BetterCharacterController
         [HarmonyPatch(typeof(CharacterAnimEvent), "UpdateLookat")]
         private static void AfterUpdateLookat(CharacterAnimEvent __instance)
         {
-            if (!Plugin.LeanEnabled.Value) return;
+            if (!Plugin.LeanEnabled.Value || Plugin.LeanFaulted) return;
 
             try
             {
@@ -92,7 +92,7 @@ namespace BetterCharacterController
             catch (Exception e)
             {
                 Plugin.Log.LogError($"aim lean failed, disabling: {e}");
-                Plugin.LeanEnabled.Value = false;
+                Plugin.LeanFaulted = true;   // session only; never written to the config file
             }
         }
 

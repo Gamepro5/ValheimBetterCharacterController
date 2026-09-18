@@ -39,6 +39,13 @@ namespace BetterCharacterController
         private static readonly AccessTools.FieldRef<GameCamera, Camera> CameraRef =
             AccessTools.FieldRefAccess<GameCamera, Camera>("m_camera");
 
+        // Character.SetVisible and its backing flag are both non-public.
+        private static readonly System.Reflection.MethodInfo SetVisibleMethod =
+            AccessTools.Method(typeof(Character), "SetVisible", new[] { typeof(bool) });
+
+        private static readonly AccessTools.FieldRef<Character, bool> LodVisibleRef =
+            AccessTools.FieldRefAccess<Character, bool>("m_lodVisible");
+
         internal static bool FirstPersonActive { get; private set; }
 
         private static float _savedNearClip = -1f;
@@ -58,8 +65,15 @@ namespace BetterCharacterController
         private static AnimatorCullingMode _savedCulling;
         private static bool _cullingOverridden;
 
+        // Keyed by renderer instance id and written exactly once per renderer. A list that gets
+        // cleared and re-populated can re-capture an ALREADY concealed value as the "original",
+        // which makes the hide permanent - so the original is recorded once and never overwritten.
+        private static readonly Dictionary<int, ShadowCastingMode> _originalShadowModes =
+            new Dictionary<int, ShadowCastingMode>();
         private static readonly List<Renderer> _hidden = new List<Renderer>();
-        private static readonly List<ShadowCastingMode> _savedShadowModes = new List<ShadowCastingMode>();
+
+        // Set while we call SetVisible ourselves, so our own prefix lets it through.
+        private static bool _forcingVisible;
 
         private static float _lastLog;
 
@@ -86,20 +100,56 @@ namespace BetterCharacterController
                     _cachedPlayer = player;
                     _playerAnimator = player != null ? player.GetComponentInChildren<Animator>() : null;
                     _hasSmoothed = false;
+                    EquipmentWatcher.MarkDirty();
                 }
 
-                bool want = Plugin.FpEnabled.Value
-                            && player != null
-                            && cam != null
-                            && !player.IsDead()
-                            && !player.IsAttached()
-                            && player.GetRagdoll() == null
-                            && player.GetControlledShip() == null
-                            && DistanceRef(__instance) <= Plugin.FpZoomThreshold.Value;
+                float distance = DistanceRef(__instance);
+
+                // Hysteresis: enter below zoomThreshold, leave only above exitZoomThreshold. With a
+                // single threshold, anything that nudges the distance as first person engages makes
+                // the two conditions fight and the mode flickers in and out every frame.
+                float enterAt = Plugin.FpZoomThreshold.Value;
+                float leaveAt = Mathf.Max(Plugin.FpExitZoomThreshold.Value, enterAt + 0.1f);
+                bool zoomOk = FirstPersonActive ? distance <= leaveAt : distance <= enterAt;
+
+                string blocker = null;
+                if (!Plugin.FpEnabled.Value) blocker = "disabled in config";
+                else if (Plugin.FirstPersonFaulted) blocker = "faulted earlier this session";
+                else if (player == null) blocker = "no local player";
+                else if (cam == null) blocker = "no camera";
+                else if (player.IsDead()) blocker = "dead";
+                else if (player.IsAttached()) blocker = "attached (sitting/riding)";
+                else if (player.GetRagdoll() != null) blocker = "ragdolled";
+                else if (player.GetControlledShip() != null) blocker = "steering a ship";
+                else if (!zoomOk) blocker = $"zoom {distance:F2} > {(FirstPersonActive ? leaveAt : enterAt):F2}";
+
+                bool want = blocker == null;
+
+                // Heartbeat while refusing to engage. Without this, the refusing path returns in
+                // silence and "no log output" is indistinguishable from "the patch never ran".
+                if (Plugin.DebugLogging.Value && !want && Time.time - _lastLog > 1f)
+                {
+                    _lastLog = Time.time;
+                    Plugin.Log.LogInfo(
+                        $"fp idle: {blocker} | distance={distance:F2} minDistance={MinDistanceRef(__instance):F2} " +
+                        $"enterAt={enterAt:F2} allowFullZoom={Plugin.FpAllowFullZoom.Value}");
+                }
 
                 if (!want)
                 {
-                    if (FirstPersonActive) Exit(cam);
+                    if (FirstPersonActive)
+                    {
+                        Plugin.Log.LogInfo($"first person off: {blocker}");
+                        Exit(cam);
+                    }
+                    else if (_hidden.Count > 0)
+                    {
+                        // Failsafe: anything still concealed while inactive means a transition was
+                        // missed. Recover rather than leaving the player invisible.
+                        Plugin.Log.LogWarning("model was still hidden while first person was inactive; restoring.");
+                        ShowBody();
+                        ForceVisible(Player.m_localPlayer);
+                    }
                     return;
                 }
 
@@ -107,6 +157,7 @@ namespace BetterCharacterController
                 {
                     FirstPersonActive = true;
                     _hasSmoothed = false;
+                    Plugin.Log.LogInfo($"first person on: zoom {distance:F2} (leaves above {leaveAt:F2})");
                     if (cam != null) _savedNearClip = cam.nearClipPlane;
                     if (_savedNearClipMin < 0f) _savedNearClipMin = NearClipMinRef(__instance);
                 }
@@ -152,20 +203,22 @@ namespace BetterCharacterController
 
                 if (Plugin.FpHideBody.Value)
                 {
-                    // Cheap periodic rescan so freshly equipped gear is caught too.
-                    if (Time.frameCount % 30 == 0) ShowBody();
-                    HideBody(player);
+                    // Rescan only when equipment visuals were actually rebuilt (EquipmentWatcher
+                    // hooks the three VisEquipment methods that instantiate models), otherwise just
+                    // re-assert what is already tracked. No hierarchy walk on an idle frame.
+                    HideBody(player, rescan: EquipmentWatcher.ConsumeDirty());
                 }
-                else
+                else if (_hidden.Count > 0)
                 {
                     ShowBody();
+                    ForceVisible(player);
                 }
 
                 if (Plugin.DebugLogging.Value && Time.time - _lastLog > 1f)
                 {
                     _lastLog = Time.time;
                     Plugin.Log.LogInfo(
-                        $"fp: distance={DistanceRef(__instance):F2} minDistance={MinDistanceRef(__instance):F2} " +
+                        $"fp: distance={distance:F2} minDistance={MinDistanceRef(__instance):F2} " +
                         $"eye={_height:F2} near={(cam != null ? cam.nearClipPlane.ToString("F3") : "-")} " +
                         $"hidden={_hidden.Count} culling={(_playerAnimator != null ? _playerAnimator.cullingMode.ToString() : "-")}");
                 }
@@ -173,7 +226,7 @@ namespace BetterCharacterController
             catch (Exception e)
             {
                 Plugin.Log.LogError($"first person failed, disabling: {e}");
-                Plugin.FpEnabled.Value = false;
+                Plugin.FirstPersonFaulted = true;   // session only; never written to the config file
                 ShowBody();
                 RestoreAnimatorCulling();
                 FirstPersonActive = false;
@@ -189,8 +242,10 @@ namespace BetterCharacterController
         [HarmonyPatch(typeof(Character), "SetVisible")]
         private static bool BeforeSetVisible(Character __instance)
         {
+            if (_forcingVisible) return true;   // our own restore call
             if (!FirstPersonActive) return true;
-            if (!Plugin.FpEnabled.Value || !Plugin.FpKeepBodyVisible.Value) return true;
+            if (!Plugin.FpEnabled.Value || Plugin.FirstPersonFaulted) return true;
+            if (!Plugin.FpKeepBodyVisible.Value) return true;
             if (__instance == null || !__instance.IsPlayer()) return true;
             if (!ReferenceEquals(__instance, Player.m_localPlayer)) return true;
 
@@ -199,7 +254,7 @@ namespace BetterCharacterController
 
         private static void ApplyZoomLimit(GameCamera gameCamera)
         {
-            if (Plugin.FpEnabled.Value && Plugin.FpAllowFullZoom.Value)
+            if (Plugin.FpEnabled.Value && !Plugin.FirstPersonFaulted && Plugin.FpAllowFullZoom.Value)
             {
                 if (_savedMinDistance < 0f) _savedMinDistance = MinDistanceRef(gameCamera);
                 if (MinDistanceRef(gameCamera) != 0f) MinDistanceRef(gameCamera) = 0f;
@@ -292,34 +347,37 @@ namespace BetterCharacterController
         /// and tools are plain MeshRenderers parented to hand bones. Hiding only skinned meshes is
         /// therefore what keeps the weapon visible.
         /// </summary>
-        private static void HideBody(Player player)
+        private static void HideBody(Player player, bool rescan)
         {
             if (player == null) return;
 
-            if (_hidden.Count == 0)
+            if (rescan || _hidden.Count == 0)
             {
+                // Additive: pick up anything new (equipment changes spawn fresh renderers) without
+                // ever clearing, so an original is never re-captured from a concealed value.
                 foreach (Renderer r in player.GetComponentsInChildren<Renderer>(true))
                 {
                     if (r == null) continue;
                     if (Plugin.FpHideSkinnedOnly.Value && !(r is SkinnedMeshRenderer)) continue;
 
-                    _hidden.Add(r);
-                    _savedShadowModes.Add(r.shadowCastingMode);
-                    Conceal(r);
+                    int id = r.GetInstanceID();
+                    if (!_originalShadowModes.ContainsKey(id))
+                    {
+                        _originalShadowModes[id] = r.shadowCastingMode;
+                        _hidden.Add(r);
+                    }
                 }
-                return;
             }
 
+            foreach (Renderer r in _hidden)
+            {
+                if (r != null) Conceal(r);
+            }
+
+            // Drop destroyed renderers so the list cannot grow without bound.
             for (int i = _hidden.Count - 1; i >= 0; i--)
             {
-                Renderer r = _hidden[i];
-                if (r == null)
-                {
-                    _hidden.RemoveAt(i);
-                    _savedShadowModes.RemoveAt(i);
-                    continue;
-                }
-                Conceal(r);
+                if (_hidden[i] == null) _hidden.RemoveAt(i);
             }
         }
 
@@ -340,17 +398,52 @@ namespace BetterCharacterController
 
         private static void ShowBody()
         {
-            if (_hidden.Count == 0) return;
+            if (_hidden.Count == 0 && _originalShadowModes.Count == 0) return;
 
-            for (int i = 0; i < _hidden.Count; i++)
+            foreach (Renderer r in _hidden)
             {
-                Renderer r = _hidden[i];
                 if (r == null) continue;
                 r.forceRenderingOff = false;
-                if (i < _savedShadowModes.Count) r.shadowCastingMode = _savedShadowModes[i];
+                if (_originalShadowModes.TryGetValue(r.GetInstanceID(), out ShadowCastingMode mode))
+                    r.shadowCastingMode = mode;
+                else
+                    r.shadowCastingMode = ShadowCastingMode.On;
             }
+
             _hidden.Clear();
-            _savedShadowModes.Clear();
+            _originalShadowModes.Clear();
+        }
+
+        /// <summary>
+        /// Undo the SetVisible suppression.
+        ///
+        /// Character.SetVisible early-returns when the value already matches its backing flag
+        /// (if (m_lodVisible == value) return). So a suppressed call never updates that flag, and
+        /// the game will not retry once suppression stops - it believes the LODGroup is already in
+        /// the state it asked for. If the game tried to make the body visible while we were
+        /// suppressing, the model stays culled indefinitely after leaving first person.
+        ///
+        /// Forcing the call once on exit, with the flag cleared first so the early-return cannot
+        /// swallow it, puts the LODGroup back.
+        /// </summary>
+        private static void ForceVisible(Character character)
+        {
+            if (character == null || SetVisibleMethod == null) return;
+
+            try
+            {
+                _forcingVisible = true;
+                LodVisibleRef(character) = false;   // defeat the equality early-return
+                SetVisibleMethod.Invoke(character, new object[] { true });
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"could not force the model visible again: {e.Message}");
+            }
+            finally
+            {
+                _forcingVisible = false;
+            }
         }
 
         private static void Exit(Camera cam)
@@ -358,6 +451,7 @@ namespace BetterCharacterController
             FirstPersonActive = false;
             _hasSmoothed = false;
             ShowBody();
+            ForceVisible(Player.m_localPlayer);
             RestoreAnimatorCulling();
             if (cam != null && _savedNearClip > 0f) cam.nearClipPlane = _savedNearClip;
             _savedNearClip = -1f;

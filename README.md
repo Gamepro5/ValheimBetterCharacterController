@@ -12,6 +12,8 @@ BepInEx, nothing installed on the server.
 
 Built and tested against Valheim `l-1.0.14` (build 25364309) with BepInEx `5.4.23.5`.
 
+Installable with any BepInEx mod manager, or by dropping the DLL in `BepInEx/plugins`.
+
 ## Install
 
 1. Install BepInEx for Valheim if it isn't already (ValheimPlus ships it).
@@ -38,7 +40,31 @@ that matter most:
 | `02 - Aim lean / maxYawDegrees` | 50 | Spine-twist guard; lower it if the torso ever corkscrews |
 | `03 - Diving / diveKey` | LeftControl | Hold and steer with the mouse |
 | `04 - First person / zoomThreshold` | 0.6 | Zoom distance at which first person engages |
+| `04 - First person / exitZoomThreshold` | 1.2 | Zoom distance at which it disengages. The gap is hysteresis — with one shared threshold the mode flickers in and out every frame |
 | `04 - First person / eyeDropFromTop` | 0.12 | Eye height below the top of the hitbox |
+
+### Is it even running?
+
+`BepInEx/LogOutput.log` should contain, at startup:
+
+```
+[Message: BetterCharacterController] BetterCharacterController 1.0.4 loaded. melee aim=True lean=True dive=True firstPerson=True
+```
+
+If that line is missing, the plugin is not loading and nothing in the config will change
+anything — check the DLL really is in `BepInEx/plugins`. Entering and leaving first person is
+logged too, with the reason for leaving:
+
+```
+first person on: zoom 0.42 (leaves above 1.20)
+first person off: zoom 1.35 > 1.20
+```
+
+Startup also warns if a conflicting plugin is loaded — notably this mod's predecessor
+`SpineAim`, or WatchWhereYouStab / VikingsDoSwim / VerticallyChallenged, whose features are
+reimplemented here. **Two plugins patching the same methods cannot coexist**: each keeps its own
+state, so they fight over the camera every frame and over hiding the body, which looks exactly
+like a bug in this mod.
 
 `99 - Advanced / debugLogging` prints lean weights, dive state, and the camera's
 `distance` / `minDistance` / near clip once a second. That last one is how to tell whether
@@ -112,7 +138,10 @@ Three separate traps, each of which looked like a positioning bug:
    forward vector ties camera height to pitch and pokes out of the hitbox when level. Here
    they are in the character's horizontal frame and default to zero, so the camera sits on
    its rotation pivot.
-3. **`UpdateNearClipping` rewrites the near plane every frame** from `m_nearClipPlaneMin`,
+3. **Entry and exit need separate thresholds.** Sharing one makes the engage and disengage
+   conditions fight the moment anything nudges `m_distance`, and first person flickers in and
+   out every frame. `zoomThreshold` and `exitZoomThreshold` are that hysteresis.
+4. **`UpdateNearClipping` rewrites the near plane every frame** from `m_nearClipPlaneMin`,
    so setting `camera.nearClipPlane` once on entry is undone immediately. Both the field and
    the live value are enforced each frame.
 
@@ -122,6 +151,12 @@ rather than bob that has been smoothed — and crouching, swimming and rolling n
 special cases. `verticalSmoothing` only softens stair steps, and never touches horizontal
 position or look, so it adds no aiming lag.
 
+Rescanning for renderers to hide is event-driven: `VisEquipment` instantiates every equipment
+model from one of three methods (`AttachItem`, `AttachArmor`, `AttachBackItem`), and a postfix on
+those marks the renderer set dirty. There is no "equipment changed" event to use instead —
+`CustomUpdate` calls `UpdateVisuals` every frame regardless — so hooking creation is what avoids
+walking the player hierarchy on idle frames.
+
 The body is hidden by setting skinned renderers to `ShadowsOnly`: body, hair and armour are
 `SkinnedMeshRenderer`s bound to the skeleton, while weapons, shields and tools are plain
 `MeshRenderer`s parented to hand bones — which is what keeps the weapon visible.
@@ -130,6 +165,14 @@ makes Unity treat the character as off-screen and stop evaluating the Animator, 
 skeleton so the held weapon no longer follows the swing. `Animator.cullingMode` is also
 forced to `AlwaysAnimate` for the same reason, and `Character.SetVisible` is suppressed for
 your own character so the LODGroup cannot cull the body — and the weapon with it.
+
+That suppression needs undoing carefully. `SetVisible` early-returns when the requested value
+already matches `m_lodVisible`, so a suppressed call never updates the flag and the game will
+not retry after suppression stops — it thinks the LODGroup is already as it asked. Leaving
+first person therefore forces `SetVisible(true)` once, with the flag cleared first so the
+equality check cannot swallow it. Original `shadowCastingMode` values are also recorded once
+per renderer and never overwritten, since re-capturing an already-concealed value as the
+"original" would make the hide permanent.
 
 ## Building
 

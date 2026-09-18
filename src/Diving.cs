@@ -31,7 +31,7 @@ namespace BetterCharacterController
         [HarmonyPatch(typeof(Character), "UpdateSwimming")]
         private static void AfterUpdateSwimming(Character __instance)
         {
-            if (!Plugin.DiveEnabled.Value) return;
+            if (!Plugin.DiveEnabled.Value || Plugin.DiveFaulted) return;
 
             try
             {
@@ -77,7 +77,7 @@ namespace BetterCharacterController
             catch (System.Exception e)
             {
                 Plugin.Log.LogError($"diving failed, disabling: {e}");
-                Plugin.DiveEnabled.Value = false;
+                Plugin.DiveFaulted = true;   // session only; never written to the config file
                 Diving_Active = false;
             }
         }

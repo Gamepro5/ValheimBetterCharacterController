@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -23,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.5";
 
         internal static ManualLogSource Log;
 
@@ -59,6 +62,7 @@ namespace BetterCharacterController
         internal static ConfigEntry<bool> FpEnabled;
         internal static ConfigEntry<bool> FpAllowFullZoom;
         internal static ConfigEntry<float> FpZoomThreshold;
+        internal static ConfigEntry<float> FpExitZoomThreshold;
         internal static ConfigEntry<float> FpEyeDropFromTop;
         internal static ConfigEntry<float> FpFallbackEyeHeight;
         internal static ConfigEntry<float> FpVerticalSmoothing;
@@ -74,6 +78,13 @@ namespace BetterCharacterController
         internal static ConfigEntry<bool> FpKeepBodyVisible;
 
         internal static ConfigEntry<bool> DebugLogging;
+
+        // Set when a feature throws, to stop it running for the rest of the session. Deliberately
+        // NOT written to the config: BepInEx persists config writes to disk, so disabling a feature
+        // that way survives restarts and looks like the feature is permanently broken.
+        internal static bool LeanFaulted;
+        internal static bool DiveFaulted;
+        internal static bool FirstPersonFaulted;
 
         public enum HideMethod
         {
@@ -218,6 +229,15 @@ namespace BetterCharacterController
                 new ConfigDescription("Engage below this zoom distance, metres.",
                     new AcceptableValueRange<float>(0.05f, 4f)));
 
+            FpExitZoomThreshold = Config.Bind("04 - First person", "exitZoomThreshold", 1.2f,
+                new ConfigDescription(
+                    "Leave first person only once the zoom distance rises above this, in metres. " +
+                    "Deliberately higher than zoomThreshold: with a single threshold, anything that " +
+                    "nudges the distance the moment first person engages makes entry and exit fight " +
+                    "each other and the mode flickers in and out every frame. The gap between the " +
+                    "two values is that hysteresis. Must be greater than zoomThreshold.",
+                    new AcceptableValueRange<float>(0.1f, 6f)));
+
             FpEyeDropFromTop = Config.Bind("04 - First person", "eyeDropFromTop", 0.12f,
                 new ConfigDescription(
                     "How far below the top of the character's capsule hitbox the eyes sit, metres. " +
@@ -289,13 +309,67 @@ namespace BetterCharacterController
             DebugLogging = Config.Bind("99 - Advanced", "debugLogging", false,
                 "Log lean weights, first-person state and dive state once per second.");
 
+            WarnAboutConflicts();
+
             Harmony harmony = new Harmony(Guid);
             harmony.PatchAll(typeof(MeleeAim));
             harmony.PatchAll(typeof(AimLean));
             harmony.PatchAll(typeof(Diving));
             harmony.PatchAll(typeof(FirstPersonCamera));
+            harmony.PatchAll(typeof(EquipmentWatcher));
 
-            Logger.LogInfo($"{Name} {Version} loaded.");
+            // Deliberately a Message, not Info: this is the line to look for when diagnosing
+            // "the mod does nothing", and it should be impossible to miss in the log.
+            Logger.LogMessage($"{Name} {Version} loaded. " +
+                              $"melee aim={MeleeAimEnabled.Value} lean={LeanEnabled.Value} " +
+                              $"dive={DiveEnabled.Value} firstPerson={FpEnabled.Value}");
+
+            // A patch that silently failed to apply looks identical to a feature that is not
+            // working, so list what actually got patched rather than assuming it all did.
+            try
+            {
+                var patched = new List<string>();
+                foreach (MethodBase m in harmony.GetPatchedMethods())
+                    patched.Add($"{m.DeclaringType?.Name}.{m.Name}");
+                patched.Sort();
+                Logger.LogMessage($"patched {patched.Count} methods: {string.Join(", ", patched)}");
+
+                if (!patched.Contains("GameCamera.LateUpdate"))
+                    Logger.LogWarning("GameCamera.LateUpdate is NOT patched - first person cannot work.");
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning($"could not enumerate patched methods: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Two plugins patching the same methods with independent state cannot work: each has its
+        /// own idea of whether first person is active, so they fight over the camera every frame
+        /// and over showing and hiding the body. The predecessor of this mod (SpineAim) patched the
+        /// same methods, so a leftover copy in plugins/ produces flicker and a body that stays
+        /// hidden - symptoms that look exactly like a bug in this mod.
+        /// </summary>
+        private void WarnAboutConflicts()
+        {
+            string[] known =
+            {
+                "gameprog.spineaim",                    // this mod's predecessor
+                "searica.valheim.watchwhereyoustab",    // melee vertical aim
+                "blacks7ar.VikingsDoSwim",              // diving
+                "ComfyMods.VerticallyChallenged",       // melee vertical aim
+            };
+
+            foreach (string guid in known)
+            {
+                if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(guid)) continue;
+
+                Logger.LogWarning(
+                    $"CONFLICT: '{guid}' is also loaded. It patches the same game methods as " +
+                    $"{Name}, and two plugins with separate state will fight over the camera and " +
+                    $"the player model - expect flicker, or a body that stays hidden. Remove it " +
+                    $"from BepInEx/plugins, or disable the overlapping feature on one side.");
+            }
         }
     }
 }
