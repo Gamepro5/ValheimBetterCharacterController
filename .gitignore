@@ -1,0 +1,8 @@
+# build output
+src/bin/
+src/obj/
+*.user
+
+# the built artifact is committed at the repo root for convenience;
+# ignore stray copies elsewhere
+src/**/BetterCharacterController.dll
