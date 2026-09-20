@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.2
+
+Diagnostic for a report that the local player's pitch appears mirrored onto remote players.
+
+I could not reproduce the mechanism by reading the game: `ZDO.GetFloat(string, out float)` does
+return false for an absent key (so a player not running the mod should be skipped), and
+`CharacterAnimEvent.GetLookFromPos` turns out to be the averaged eye *origin* rather than a look
+target, ruling out the idea that vanilla aims remote heads at the local camera.
+
+So with `debugLogging = true` the lean now reports what it did to every character, once a second:
+
+```
+lean: self: leaned via local weight=1.00 scale=1.00 attack=Horizontal attacking=False | remote#4213: skipped: no synced angles
+```
+
+That line separates the two possibilities this report leaves open: either the mod is leaning remote
+players with bad data, or it is not touching them at all and something else is moving them.
+
 ## 1.1.1
 
 **Validate synced angles at the trust boundary.** Received values are only ever used as numbers, so

@@ -28,6 +28,10 @@ namespace BetterCharacterController
 
         private static float _lastLogTime;
 
+        // One summary line per second covering every character we were asked about, so "is the mod
+        // even touching the other players?" is answerable without guessing. Keyed by instance.
+        private static readonly Dictionary<int, string> _report = new Dictionary<int, string>();
+
         /// <summary>
         /// Runs after the game has set its own look-at values. Unity does not solve look-at until
         /// OnAnimatorIK returns, so re-issuing here replaces them for this evaluation.
@@ -48,7 +52,13 @@ namespace BetterCharacterController
                 if (isLocal) LookSync.PublishLocal(character);
 
                 if (!Plugin.LeanEnabled.Value || Plugin.LeanFaulted) return;
-                if (Plugin.LeanLocalOnly.Value && !isLocal) return;
+
+                if (Plugin.LeanLocalOnly.Value && !isLocal)
+                {
+                    Note(id0(__instance), isLocal, "skipped: localPlayerOnly");
+                    Report(isLocal);
+                    return;
+                }
 
                 Animator animator = AnimatorRef(__instance);
                 if (animator == null || !animator.isHuman) return;
@@ -66,7 +76,14 @@ namespace BetterCharacterController
                 bool firstThisFrame = NewFrame(id);
 
                 Vector3 dir = ClampedLookDir(character, isLocal, id, firstThisFrame);
-                if (dir.sqrMagnitude < 1e-6f) return;
+                if (dir.sqrMagnitude < 1e-6f)
+                {
+                    // For a remote character this is the normal outcome when its client is not
+                    // publishing angles: we leave it vanilla rather than invent a direction.
+                    Note(id, isLocal, isLocal ? "no local look dir" : "skipped: no synced angles");
+                    Report(isLocal);
+                    return;
+                }
 
                 animator.SetLookAtPosition(head.position + dir * Plugin.LeanTargetDistance.Value);
 
@@ -80,17 +97,15 @@ namespace BetterCharacterController
                     Plugin.LeanEyeWeight.Value,
                     Plugin.LeanClampWeight.Value);
 
-                if (Plugin.DebugLogging.Value && Time.time - _lastLogTime > 1f)
+                if (Plugin.DebugLogging.Value)
                 {
-                    _lastLogTime = Time.time;
                     Attack dbg = CurrentAttack(character);
-                    Plugin.Log.LogInfo(
-                        $"lean weight={weight:F2} weaponScale={scale:F2} " +
-                        $"attackType={(dbg != null ? dbg.m_attackType.ToString() : "none")} " +
-                        $"maxY={(dbg != null ? dbg.m_maxYAngle.ToString("F1") : "-")} " +
-                        $"facingYAim={(dbg != null && dbg.m_useCharacterFacingYAim)} " +
-                        $"attacking={attacking} fp={FirstPersonCamera.FirstPersonActive}");
+                    Note(id, isLocal,
+                        $"leaned via {(isLocal ? "local" : "sync")} weight={weight:F2} scale={scale:F2} " +
+                        $"attack={(dbg != null ? dbg.m_attackType.ToString() : "none")} attacking={attacking}");
                 }
+                Report(isLocal);
+
             }
             catch (Exception e)
             {
@@ -205,6 +220,30 @@ namespace BetterCharacterController
             return isLocal
                 ? LookSync.ComputeAngles(character, out pitch, out yaw)
                 : LookSync.TryRead(character, out pitch, out yaw);
+        }
+
+        private static int id0(CharacterAnimEvent e) => e.GetInstanceID();
+
+        private static void Note(int id, bool isLocal, string state)
+        {
+            if (!Plugin.DebugLogging.Value) return;
+            _report[id] = $"{(isLocal ? "self" : "remote#" + id)}: {state}";
+        }
+
+        /// <summary>
+        /// Emits the collected per-character states once a second, driven off the local player's
+        /// pass so the line is stable. This is the diagnostic that distinguishes "the mod is leaning
+        /// other players wrongly" from "the mod is not touching them and something else is".
+        /// </summary>
+        private static void Report(bool isLocal)
+        {
+            if (!Plugin.DebugLogging.Value || !isLocal) return;
+            if (Time.time - _lastLogTime < 1f) return;
+            _lastLogTime = Time.time;
+
+            if (_report.Count > 0)
+                Plugin.Log.LogInfo("lean: " + string.Join(" | ", _report.Values));
+            _report.Clear();
         }
 
         /// <summary>True the first time this instance is seen in the current frame.</summary>
