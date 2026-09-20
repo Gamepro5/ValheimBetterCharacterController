@@ -21,6 +21,15 @@ Installable with any BepInEx mod manager, or by dropping the DLL in `BepInEx/plu
 3. Launch once; the config appears at
    `BepInEx/config/gameprog.bettercharactercontroller.cfg`.
 
+### The BepInEx console window is unrelated
+
+Whether Valheim opens a black console window at launch is controlled by `[Logging.Console] Enabled`
+in `BepInEx/config/BepInEx.cfg`. Stock BepInEx defaults it to **false**; the ValheimPlus client
+package ships a config that turns it **on**. So a missing console window says nothing about whether
+mods loaded — only that this one setting differs, which is common when a mod manager installs its
+own BepInEx config. `BepInEx/LogOutput.log` is written regardless (`[Logging.Disk] Enabled`, default
+true) and is the thing to read.
+
 Works alongside **ValheimPlus**: everything here is cosmetic or local movement, and no
 networked state is changed, so V+'s `enforceMod` version check is unaffected.
 
@@ -48,8 +57,12 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.1.2 loaded.
+[Info   : BetterCharacterController] BetterCharacterController 1.1.3 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
 ```
+
+The path matters as much as the version. A mod manager that installs to a folder BepInEx does not
+scan looks exactly like a broken mod, and a stale copy looks exactly like a mod ignoring your
+config. Both have cost real debugging time here.
 
 If that line is missing, the plugin is not loading and nothing in the config will change
 anything — check the DLL really is in `BepInEx/plugins`. **Check the version in that line before

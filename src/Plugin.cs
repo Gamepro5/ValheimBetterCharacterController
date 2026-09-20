@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.1.2";
+        public const string Version = "1.1.3";
 
         internal static ManualLogSource Log;
 
@@ -352,8 +352,20 @@ namespace BetterCharacterController
             harmony.PatchAll(typeof(FirstPersonCamera));
             harmony.PatchAll(typeof(EquipmentWatcher));
 
-            // One line, naming the version so a stale DLL is identifiable at a glance.
-            Logger.LogInfo($"{Name} {Version} loaded.");
+            // Name the version AND where this assembly was loaded from. Both have cost real
+            // debugging time: a stale copy looks identical to a mod ignoring your fixes, and a mod
+            // manager installing to a folder BepInEx does not scan looks identical to a broken mod.
+            string from;
+            try
+            {
+                from = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                if (string.IsNullOrEmpty(from)) from = "<unknown location>";
+            }
+            catch
+            {
+                from = "<unknown location>";
+            }
+            Logger.LogInfo($"{Name} {Version} loaded from {from}");
 
             // A patch that silently fails to apply is indistinguishable from a feature that does
             // not work, so the full list is available under debugLogging - but a missing camera

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.3
+
+The startup line now reports **where the assembly was loaded from**, not just its version:
+
+```
+BetterCharacterController 1.1.3 loaded from F:\...\Valheim\BepInEx\plugins\BetterCharacterController.dll
+```
+
+Two failures are indistinguishable from a broken mod without this, and both have already cost real
+debugging time: a stale copy that ignores every fix, and a mod manager installing to a folder
+BepInEx does not scan. Now one line rules out both.
+
+Documented that the BepInEx console window is `[Logging.Console] Enabled` in `BepInEx.cfg` - stock
+BepInEx defaults it off and the ValheimPlus package turns it on - so its absence says nothing about
+whether mods loaded.
+
 ## 1.1.2
 
 Diagnostic for a report that the local player's pitch appears mirrored onto remote players.
