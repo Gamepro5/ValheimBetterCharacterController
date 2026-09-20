@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.1.4";
+        public const string Version = "1.1.5";
 
         internal static ManualLogSource Log;
 
@@ -366,6 +366,15 @@ namespace BetterCharacterController
                 from = "<unknown location>";
             }
             Logger.LogInfo($"{Name} {Version} loaded from {from}");
+            Logger.LogInfo($"features: meleeAim={MeleeAimEnabled.Value} lean={LeanEnabled.Value} " +
+                           $"dive={DiveEnabled.Value} firstPerson={FpEnabled.Value} lookSync={LookSyncEnabled.Value}");
+
+            // A feature switched off in config looks exactly like a feature that is broken, and the
+            // config persists across updates - including a value some earlier version may have
+            // written itself. Say so plainly rather than leaving it to be discovered.
+            if (!FpEnabled.Value)
+                Logger.LogWarning("first person is DISABLED in your config: set [04 - First person] " +
+                                  "enabled = true in gameprog.bettercharactercontroller.cfg.");
 
             // A patch that silently fails to apply is indistinguishable from a feature that does
             // not work, so the full list is available under debugLogging - but a missing camera

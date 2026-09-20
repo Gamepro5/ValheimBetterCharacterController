@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.5
+
+Fixes two diagnostic mistakes that hid why first person was not engaging.
+
+* **The "zoom cannot reach the threshold" warning was one-shot per session.** If it fired during
+  load it ended up near the top of the log, nowhere near where anyone looks after reproducing the
+  problem - so it read as "nothing is printed". It now repeats at most every 10 seconds while the
+  condition holds.
+* **Nothing reported a feature being switched off in config.** A disabled feature is
+  indistinguishable from a broken one, and the config file survives updates - including a value an
+  earlier version's error handler may have written itself. Startup now lists the state of all five
+  features, and warns explicitly if first person is disabled.
+
 ## 1.1.4
 
 Warns at startup when ValheimPlus's own `[FirstPerson]` is enabled **on this client**, since it

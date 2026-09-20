@@ -76,7 +76,7 @@ namespace BetterCharacterController
         private static bool _forcingVisible;
 
         private static float _lastLog;
-        private static bool _warnedStuckZoom;
+        private static float _lastStuckWarn = -999f;
 
         /// <summary>
         /// LateUpdate is the outermost camera method - it calls UpdateCamera internally - so
@@ -130,13 +130,16 @@ namespace BetterCharacterController
                 // player has zoomed as far in as the game will allow, yet the threshold was never
                 // reached, so first person simply never engages and nothing explains why. Fires
                 // without debugLogging because whoever hits it has no reason to suspect a config.
-                if (!want && !FirstPersonActive && !_warnedStuckZoom && Plugin.FpEnabled.Value)
+                if (!want && !FirstPersonActive && Plugin.FpEnabled.Value
+                    && Time.time - _lastStuckWarn > 10f)
                 {
                     float floor = MinDistanceRef(__instance);
                     bool bottomedOut = distance <= floor + 0.05f;
                     if (bottomedOut && distance > enterAt)
                     {
-                        _warnedStuckZoom = true;
+                        // Repeated rather than one-shot: a single early line ends up near the top of
+                        // the log, far from where anyone looks after reproducing the problem.
+                        _lastStuckWarn = Time.time;
                         Plugin.Log.LogWarning(
                             $"first person never engages: the zoom bottoms out at {distance:F2}m but " +
                             $"engaging needs {enterAt:F2}m or less (minDistance={floor:F2}, " +
@@ -179,7 +182,7 @@ namespace BetterCharacterController
                 {
                     FirstPersonActive = true;
                     _hasSmoothed = false;
-                    _warnedStuckZoom = false;
+                    _lastStuckWarn = -999f;
                     if (Plugin.DebugLogging.Value)
                         Plugin.Log.LogInfo($"first person on: zoom {distance:F2} (leaves above {leaveAt:F2})");
                     if (cam != null) _savedNearClip = cam.nearClipPlane;
