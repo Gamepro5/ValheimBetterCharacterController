@@ -76,6 +76,7 @@ namespace BetterCharacterController
         private static bool _forcingVisible;
 
         private static float _lastLog;
+        private static bool _warnedStuckZoom;
 
         /// <summary>
         /// LateUpdate is the outermost camera method - it calls UpdateCamera internally - so
@@ -125,6 +126,27 @@ namespace BetterCharacterController
 
                 bool want = blocker == null;
 
+                // One-shot diagnostic for the case that is impossible to report otherwise: the
+                // player has zoomed as far in as the game will allow, yet the threshold was never
+                // reached, so first person simply never engages and nothing explains why. Fires
+                // without debugLogging because whoever hits it has no reason to suspect a config.
+                if (!want && !FirstPersonActive && !_warnedStuckZoom && Plugin.FpEnabled.Value)
+                {
+                    float floor = MinDistanceRef(__instance);
+                    bool bottomedOut = distance <= floor + 0.05f;
+                    if (bottomedOut && distance > enterAt)
+                    {
+                        _warnedStuckZoom = true;
+                        Plugin.Log.LogWarning(
+                            $"first person never engages: the zoom bottoms out at {distance:F2}m but " +
+                            $"engaging needs {enterAt:F2}m or less (minDistance={floor:F2}, " +
+                            $"allowFullZoom={Plugin.FpAllowFullZoom.Value}). " +
+                            (Plugin.FpAllowFullZoom.Value
+                                ? "Something else is re-clamping the camera's minimum distance - another camera mod is the usual cause."
+                                : "Set allowFullZoom = true, or raise zoomThreshold above the value above."));
+                    }
+                }
+
                 // Heartbeat while refusing to engage. Without this, the refusing path returns in
                 // silence and "no log output" is indistinguishable from "the patch never ran".
                 if (Plugin.DebugLogging.Value && !want && Time.time - _lastLog > 1f)
@@ -157,6 +179,7 @@ namespace BetterCharacterController
                 {
                     FirstPersonActive = true;
                     _hasSmoothed = false;
+                    _warnedStuckZoom = false;
                     if (Plugin.DebugLogging.Value)
                         Plugin.Log.LogInfo($"first person on: zoom {distance:F2} (leaves above {leaveAt:F2})");
                     if (cam != null) _savedNearClip = cam.nearClipPlane;

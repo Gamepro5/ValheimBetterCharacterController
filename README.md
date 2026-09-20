@@ -48,7 +48,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.0.1 loaded.
+[Info   : BetterCharacterController] BetterCharacterController 1.0.2 loaded.
 ```
 
 If that line is missing, the plugin is not loading and nothing in the config will change

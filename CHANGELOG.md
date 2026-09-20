@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.2
+
+**First person now explains itself when it refuses to engage.** If the zoom bottoms out at the
+game's minimum but never reaches the threshold, a warning is logged once - without needing
+`debugLogging`, since anyone hitting this has no reason to suspect a config value:
+
+```
+first person never engages: the zoom bottoms out at 1.50m but engaging needs 0.60m or less
+(minDistance=1.50, allowFullZoom=True). Something else is re-clamping the camera's minimum
+distance - another camera mod is the usual cause.
+```
+
+This is the one failure that could not previously be reported: the refusing path is silent by
+design, so "first person does nothing" produced no output at all and looked identical to the mod
+not being loaded.
+
 ## 1.0.1
 
 **Fixed: in multiplayer the aim lean pointed every player the same way.** `localPlayerOnly` now
