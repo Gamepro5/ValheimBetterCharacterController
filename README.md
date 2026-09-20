@@ -48,7 +48,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.1.0 loaded.
+[Info   : BetterCharacterController] BetterCharacterController 1.1.1 loaded.
 ```
 
 If that line is missing, the plugin is not loading and nothing in the config will change
@@ -156,6 +156,31 @@ frame, and `directionSmoothing` covers the gaps on the receiving side.
 Publishing is independent of whether your client displays a lean, so turning the lean off or
 sitting down does not make you invisible to others. `[05 - Look sync] enabled = false` opts out
 entirely.
+
+#### What is actually sent, and the risk
+
+Two IEEE-754 floats per update: a pitch and a yaw. Nothing else.
+
+The received values are only ever used as numbers — to clamp, to build a `Quaternion`, and to
+position an IK look-at target. They are never used as a type name, an assembly or file path, a
+reflection target, a command, or a serialized object graph, and no deserialiser runs on them. There
+is therefore no path by which a remote client's data becomes executed code in this mod.
+
+They are still validated at the boundary, because two things can go wrong without any code
+execution:
+
+* **NaN and Infinity survive `Mathf.Clamp`** — comparisons against NaN are false, so a clamp passes
+  it through. It would reach `Quaternion.Euler` and `SetLookAtPosition` and produce an invalid pose
+  plus a Unity error every frame. Non-finite and implausibly large angles are rejected outright and
+  the character is left vanilla, with one warning logged.
+* **Information disclosure.** Your view angles are data Valheim does not normally transmit, so
+  anyone nearby running the mod can tell where you are aiming. That is the point of the feature, but
+  it is a real disclosure; `enabled = false` if you would rather not.
+
+Worth keeping in perspective: this rides on the game's existing ZDO replication, which already
+carries position, rotation, health and equipment from every client and is trusted broadly by the
+game itself. Two range-checked floats do not meaningfully widen that surface — but the surface was
+already wide, and this mod cannot narrow it.
 
 First person and diving are inherently local, so multiplayer does not affect them: the resulting
 camera and position are yours, and other players see your position move as normal.

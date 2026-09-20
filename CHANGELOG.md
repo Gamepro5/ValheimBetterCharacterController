@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1
+
+**Validate synced angles at the trust boundary.** Received values are only ever used as numbers, so
+there is no route from them to executed code — but `NaN` and `Infinity` survive `Mathf.Clamp`
+(comparisons against NaN are false), and would have reached `Quaternion.Euler` and
+`SetLookAtPosition`, giving an invalid pose and a Unity error every frame for that character. Cheap
+to send, annoying to receive.
+
+Non-finite and implausibly large angles are now rejected outright, with a one-shot warning, and the
+character is left vanilla. The bound is a fixed constant rather than the display limits, so
+changing those cannot widen what is accepted off the wire.
+
 ## 1.1.0
 
 **Look direction is now synced, so you can see where other players are actually aiming.**

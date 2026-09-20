@@ -34,9 +34,23 @@ namespace BetterCharacterController
         private static readonly AccessTools.FieldRef<Character, ZNetView> NViewRef =
             AccessTools.FieldRefAccess<Character, ZNetView>("m_nview");
 
+        /// <summary>Hard bound on accepted angles, independent of any config value.</summary>
+        private const float SaneAngleLimit = 720f;
+
+        private static bool _warnedBadData;
         private static float _lastSend;
         private static float _lastPitch = float.NaN;
         private static float _lastYaw = float.NaN;
+
+        /// <summary>
+        /// Rejects anything that is not a finite, plausibly sized angle. Deliberately independent of
+        /// the display limits in config, so tightening or loosening those cannot widen what is
+        /// accepted off the wire.
+        /// </summary>
+        private static bool IsSane(float angle)
+        {
+            return !float.IsNaN(angle) && !float.IsInfinity(angle) && Mathf.Abs(angle) <= SaneAngleLimit;
+        }
 
         /// <summary>
         /// View angles of a character measured from its own eye transform, relative to its body.
@@ -138,6 +152,29 @@ namespace BetterCharacterController
             // zero pitch is a perfectly normal value.
             if (!zdo.GetFloat(PitchKey, out pitch)) return false;
             if (!zdo.GetFloat(YawKey, out yaw)) return false;
+
+            // Trust boundary. These two floats arrived over the network from a client we do not
+            // control, so treat them as hostile input even though they are only ever used as
+            // numbers - nothing here turns them into code, a path, a type name or a lookup.
+            //
+            // The specific hazard is that NaN and Infinity survive Mathf.Clamp: comparisons against
+            // NaN are false, so a clamp passes it straight through. It would then reach
+            // Quaternion.Euler and Animator.SetLookAtPosition, giving an invalid pose and a Unity
+            // error every frame for that character - cheap for an attacker, annoying for us.
+            if (!IsSane(pitch) || !IsSane(yaw))
+            {
+                if (!_warnedBadData)
+                {
+                    _warnedBadData = true;
+                    Plugin.Log.LogWarning(
+                        $"ignoring malformed look angles from a remote player (pitch={pitch}, yaw={yaw}). " +
+                        "Their client is either buggy or deliberately sending nonsense; the character " +
+                        "is left vanilla.");
+                }
+                pitch = 0f;
+                yaw = 0f;
+                return false;
+            }
 
             return true;
         }
