@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0
+
+**Look direction is now synced, so you can see where other players are actually aiming.**
+
+Valheim networks no view pitch, which is why 1.0.1 had to restrict the lean to your own character.
+This adds the missing data. Each client publishes its own pitch and yaw (yaw measured relative to
+its body facing) and reads what others publish, so `localPlayerOnly` returns to `false` — safely,
+because a player who does not publish is left vanilla rather than guessed at.
+
+The transport is the player's own **ZDO**, not a routed RPC:
+
+* ZDO fields already replicate to everyone who can see the character, on the game's own schedule,
+  with ownership enforced — no RPC registration and no recipient bookkeeping.
+* They pass through the server as opaque data, so **the server does not need this mod**.
+* The last value persists in the ZDO, so someone who walks into view later gets current angles
+  with no keepalive traffic.
+* Clients without the mod never read the keys, so nothing breaks for them.
+
+Yaw is sent relative to the body rather than as a world vector, so a body that has rotated since
+the last update still yields a sane direction instead of a stale heading. Angles are published
+unclamped and each viewer applies its own `maxYawDegrees` / `maxPitchDegrees`, so limits need not
+be agreed between players. Updates are rate limited (`sendRateHz`, default 10) and skipped below
+`minChangeDegrees` (1.5), since mouse look jitters fractionally every frame; the receiver's
+existing `directionSmoothing` covers the gaps.
+
+Publishing is deliberately independent of whether your own client displays a lean — turning the
+lean off, or sitting down, should not make you invisible to everyone else.
+
 ## 1.0.2
 
 **First person now explains itself when it refuses to engage.** If the zoom bottoms out at the

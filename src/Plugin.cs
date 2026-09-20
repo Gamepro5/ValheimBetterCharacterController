@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.0.2";
+        public const string Version = "1.1.0";
 
         internal static ManualLogSource Log;
 
@@ -51,6 +51,11 @@ namespace BetterCharacterController
         internal static ConfigEntry<float> LeanTargetDistance;
         internal static ConfigEntry<bool> LeanSkipAreaAttacks;
         internal static ConfigEntry<bool> LeanSkipFacingYAim;
+
+        // ---- look direction sync ----
+        internal static ConfigEntry<bool> LookSyncEnabled;
+        internal static ConfigEntry<float> LookSyncRateHz;
+        internal static ConfigEntry<float> LookSyncMinChange;
 
         // ---- diving ----
         internal static ConfigEntry<bool> DiveEnabled;
@@ -85,6 +90,7 @@ namespace BetterCharacterController
         internal static bool LeanFaulted;
         internal static bool DiveFaulted;
         internal static bool FirstPersonFaulted;
+        internal static bool LookSyncFaulted;
 
         public enum HideMethod
         {
@@ -183,14 +189,13 @@ namespace BetterCharacterController
             LeanAlways = Config.Bind("02 - Aim lean", "leanOutsideAttack", true,
                 "Also lean while not attacking, which looks more consistent.");
 
-            LeanLocalOnly = Config.Bind("02 - Aim lean", "localPlayerOnly", true,
-                "Only lean your own character. Leave this true.\n\n" +
-                "Valheim does not network view pitch. Character.GetLookDir() returns m_eye.forward, " +
-                "and only the local player's eye is driven by mouse input (Player.SetMouseLook -> " +
-                "SetLookDir); for everyone else that transform carries no pitch information at all. " +
-                "Applying the lean to remote players therefore aims them all the same way rather " +
-                "than where they are actually looking, which is worse than leaving them vanilla. " +
-                "Set false only if you are experimenting.");
+            LeanLocalOnly = Config.Bind("02 - Aim lean", "localPlayerOnly", false,
+                "Only lean your own character.\n\n" +
+                "Default false, which is safe because remote players are leaned only when they " +
+                "publish their view angles (see the look sync section). Valheim itself does not " +
+                "network view pitch - Character.GetLookDir() is m_eye.forward, and only the local " +
+                "player's eye follows the mouse - so a player without this mod carries no pitch " +
+                "information and is left vanilla rather than guessed at.");
 
             LeanSkipAreaAttacks = Config.Bind("02 - Aim lean", "skipAreaAttacks", true,
                 "Do not lean for Area or None attack types - radial slams centred on the " +
@@ -199,6 +204,30 @@ namespace BetterCharacterController
             LeanSkipFacingYAim = Config.Bind("02 - Aim lean", "skipFacingYAim", true,
                 "Do not lean for attacks flagged m_useCharacterFacingYAim, which deliberately " +
                 "use body facing rather than where you look.");
+
+            // ----------------------------------------------------------- look sync ----
+            LookSyncEnabled = Config.Bind("05 - Look sync", "enabled", true,
+                "Publish your view angles so other players running this mod can see which way you " +
+                "are actually looking, and read theirs.\n\n" +
+                "Sent through your character's own ZDO, which the game already replicates to " +
+                "everyone who can see you. The SERVER does not need this mod - ZDO fields pass " +
+                "through it as opaque data - and clients without the mod simply never read the " +
+                "keys, so nothing breaks for them. Turn this off to keep your aim private or to " +
+                "rule the feature out while debugging.");
+
+            LookSyncRateHz = Config.Bind("05 - Look sync", "sendRateHz", 10f,
+                new ConfigDescription(
+                    "How often at most your angles are published, per second. Head movement does " +
+                    "not need frame rate: the receiver smooths between updates with " +
+                    "directionSmoothing, so 10 looks continuous. Higher is more traffic for very " +
+                    "little visible gain.",
+                    new AcceptableValueRange<float>(2f, 30f)));
+
+            LookSyncMinChange = Config.Bind("05 - Look sync", "minChangeDegrees", 1.5f,
+                new ConfigDescription(
+                    "Only publish when an angle has moved at least this much. Mouse look jitters " +
+                    "by fractions of a degree every frame and sending that is pure traffic.",
+                    new AcceptableValueRange<float>(0f, 10f)));
 
             // -------------------------------------------------------------- diving ----
             DiveEnabled = Config.Bind("03 - Diving", "enabled", true,

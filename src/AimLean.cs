@@ -36,16 +36,19 @@ namespace BetterCharacterController
         [HarmonyPatch(typeof(CharacterAnimEvent), "UpdateLookat")]
         private static void AfterUpdateLookat(CharacterAnimEvent __instance)
         {
-            if (!Plugin.LeanEnabled.Value || Plugin.LeanFaulted) return;
-
             try
             {
                 Character character = CharacterRef(__instance);
                 if (character == null) return;
 
-                if (Plugin.LeanLocalOnly.Value &&
-                    !(Player.m_localPlayerExists && ReferenceEquals(character, Player.m_localPlayer)))
-                    return;
+                bool isLocal = Player.m_localPlayerExists && ReferenceEquals(character, Player.m_localPlayer);
+
+                // Before any display gating: what other clients see of us must not depend on
+                // whether we happen to render a lean ourselves.
+                if (isLocal) LookSync.PublishLocal(character);
+
+                if (!Plugin.LeanEnabled.Value || Plugin.LeanFaulted) return;
+                if (Plugin.LeanLocalOnly.Value && !isLocal) return;
 
                 Animator animator = AnimatorRef(__instance);
                 if (animator == null || !animator.isHuman) return;
@@ -62,7 +65,7 @@ namespace BetterCharacterController
                 int id = __instance.GetInstanceID();
                 bool firstThisFrame = NewFrame(id);
 
-                Vector3 dir = ClampedLookDir(character, id, firstThisFrame);
+                Vector3 dir = ClampedLookDir(character, isLocal, id, firstThisFrame);
                 if (dir.sqrMagnitude < 1e-6f) return;
 
                 animator.SetLookAtPosition(head.position + dir * Plugin.LeanTargetDistance.Value);
@@ -141,30 +144,32 @@ namespace BetterCharacterController
         }
 
         /// <summary>
-        /// The look direction, limited in yaw and pitch relative to the body's own facing and
-        /// eased over time. Both limits exist to stop the solver corkscrewing the spine when the
-        /// camera points somewhere the torso cannot reasonably follow.
+        /// The look direction to aim the IK at: limited in yaw and pitch relative to the body's own
+        /// facing, then eased over time.
+        ///
+        /// Both limits exist to stop the solver corkscrewing the spine when the view points
+        /// somewhere the torso cannot reasonably follow - orbiting the camera around a stationary
+        /// character otherwise puts the target behind it.
+        ///
+        /// Returns zero when there is nothing trustworthy to aim at, which is the case for a remote
+        /// player whose client is not running this mod: Valheim networks no view pitch, so guessing
+        /// would aim every such player identically.
         /// </summary>
-        private static Vector3 ClampedLookDir(Character character, int id, bool advance)
+        private static Vector3 ClampedLookDir(Character character, bool isLocal, int id, bool advance)
         {
-            Vector3 look = character.GetLookDir();
-            if (look.sqrMagnitude < 1e-6f) return Vector3.zero;
-            look.Normalize();
+            if (!TryGetAngles(character, isLocal, out float pitch, out float yaw)) return Vector3.zero;
+
+            yaw = Mathf.Clamp(yaw, -Plugin.LeanMaxYaw.Value, Plugin.LeanMaxYaw.Value);
+            pitch = Mathf.Clamp(pitch, -Plugin.LeanMaxPitch.Value, Plugin.LeanMaxPitch.Value);
 
             Vector3 bodyFlat = character.transform.forward;
             bodyFlat.y = 0f;
-            if (bodyFlat.sqrMagnitude < 1e-6f) return look;
+            if (bodyFlat.sqrMagnitude < 1e-6f) return Vector3.zero;
             bodyFlat.Normalize();
 
-            Vector3 lookFlat = new Vector3(look.x, 0f, look.z);
-            float yaw = lookFlat.sqrMagnitude < 1e-6f
-                ? 0f
-                : Vector3.SignedAngle(bodyFlat, lookFlat.normalized, Vector3.up);
-            yaw = Mathf.Clamp(yaw, -Plugin.LeanMaxYaw.Value, Plugin.LeanMaxYaw.Value);
-
-            float pitch = Mathf.Asin(Mathf.Clamp(look.y, -1f, 1f)) * Mathf.Rad2Deg;
-            pitch = Mathf.Clamp(pitch, -Plugin.LeanMaxPitch.Value, Plugin.LeanMaxPitch.Value);
-
+            // Rebuilt against the body's CURRENT forward. For a synced remote player that means a
+            // body which has turned since the last update still yields a sensible direction, rather
+            // than a stale world-space vector.
             // Negative X euler pitches up in Unity.
             Quaternion rot = Quaternion.LookRotation(bodyFlat, Vector3.up) * Quaternion.Euler(-pitch, yaw, 0f);
             Vector3 target = rot * Vector3.forward;
@@ -189,6 +194,17 @@ namespace BetterCharacterController
             }
 
             return current;
+        }
+
+        /// <summary>
+        /// View angles for this character: measured locally for our own player and published for
+        /// others to read, or read from the ZDO for a remote player that publishes them.
+        /// </summary>
+        private static bool TryGetAngles(Character character, bool isLocal, out float pitch, out float yaw)
+        {
+            return isLocal
+                ? LookSync.ComputeAngles(character, out pitch, out yaw)
+                : LookSync.TryRead(character, out pitch, out yaw);
         }
 
         /// <summary>True the first time this instance is seen in the current frame.</summary>

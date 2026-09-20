@@ -48,7 +48,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.0.2 loaded.
+[Info   : BetterCharacterController] BetterCharacterController 1.1.0 loaded.
 ```
 
 If that line is missing, the plugin is not loading and nothing in the config will change
@@ -131,15 +131,31 @@ players see you underwater without needing the mod.
 
 ### Multiplayer
 
-The aim lean applies to **your own character only**, and cannot do better without a networking
-component. `Character.GetLookDir()` returns `m_eye.forward`, and only the local player's eye is
-driven by mouse input (`Player.SetMouseLook` → `SetLookDir`) — Valheim never sends view pitch over
-the wire. For a remote player that transform carries no pitch, so leaning them aims everyone the
-same way instead of where they are actually looking, which reads worse than leaving them vanilla.
+Valheim networks no view pitch: `Character.GetLookDir()` is `m_eye.forward`, and only the local
+player's eye is driven by mouse input (`Player.SetMouseLook` → `SetLookDir`). For a remote player
+that transform carries no pitch at all, so leaning one without extra information aims everybody
+identically — worse than leaving them vanilla.
 
-Showing other players' real aim would mean syncing pitch yourself, via a custom RPC that every
-client has to be running. That is a genuine feature, not a config change, and it is not
-implemented here.
+So the mod supplies the missing data itself. Each client publishes its own pitch and yaw and reads
+what others publish, which means **you see where other players are really looking, provided they
+are also running this mod**. Anyone without it is left vanilla rather than guessed at.
+
+The transport is the player's own **ZDO** rather than a routed RPC. ZDO fields already replicate to
+every client that can see the character, on the game's own schedule and with ownership enforced, so
+there is no RPC to register and no recipient list to maintain; they pass through the server as
+opaque data, so **the server needs no mod**; the last value persists, so someone who walks into
+view later gets current angles without keepalive traffic; and clients without the mod simply never
+read the keys.
+
+Yaw is sent relative to the body rather than as a world direction, so a body that has turned since
+the last update still produces a sane result. Angles go out unclamped and each viewer applies its
+own limits, so `maxYawDegrees` and `maxPitchDegrees` need not match between players. Traffic is
+bounded by `sendRateHz` (10) and `minChangeDegrees` (1.5) — mouse look jitters fractionally every
+frame, and `directionSmoothing` covers the gaps on the receiving side.
+
+Publishing is independent of whether your client displays a lean, so turning the lean off or
+sitting down does not make you invisible to others. `[05 - Look sync] enabled = false` opts out
+entirely.
 
 First person and diving are inherently local, so multiplayer does not affect them: the resulting
 camera and position are yours, and other players see your position move as normal.
