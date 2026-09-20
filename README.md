@@ -33,9 +33,15 @@ true) and is the thing to read.
 Works alongside **ValheimPlus**: everything here is cosmetic or local movement, and no
 networked state is changed, so V+'s `enforceMod` version check is unaffected.
 
-**If you use ValheimPlus, turn off its `[FirstPerson]` section** (`enabled = false`).
-Both move the camera and they will fight. This mod needs no hotkey — scroll in and it
-takes over.
+**If you use ValheimPlus, turn off its `[FirstPerson]` section** (`enabled = false`) **in each
+client's own config.** Both move the camera and they will fight. This mod needs no hotkey — scroll
+in and it takes over.
+
+That setting is client-side in V+ (`FirstPersonConfiguration` extends `ClientConfig`), so a server
+does not push it to anyone: setting it server-side changes nothing, and two players with different
+local configs will behave differently for no visible reason. V+ defaults it to `false`, so a fresh
+install is already fine; a config that has been edited may not be. This mod warns at startup if it
+finds V+'s first person enabled.
 
 ## Configuration
 
@@ -57,7 +63,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.1.3 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
+[Info   : BetterCharacterController] BetterCharacterController 1.1.4 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
 ```
 
 The path matters as much as the version. A mod manager that installs to a folder BepInEx does not

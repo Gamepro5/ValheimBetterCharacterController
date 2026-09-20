@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.4
+
+Warns at startup when ValheimPlus's own `[FirstPerson]` is enabled **on this client**, since it
+manages the camera's minimum zoom distance and can prevent this mod's first person from engaging.
+
+The per-client part matters: `FirstPersonConfiguration` extends `ClientConfig`, so a V+ server does
+**not** push that section to anyone. Setting it server-side fixes nothing - an assumption this
+project made and acted on until the class hierarchy was actually checked. Two players can therefore
+behave differently with no visible cause.
+
+Read by reflection, so a V+ rename degrades to a missing warning rather than an exception.
+
 ## 1.1.3
 
 The startup line now reports **where the assembly was loaded from**, not just its version:

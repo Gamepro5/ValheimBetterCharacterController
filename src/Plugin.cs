@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.1.3";
+        public const string Version = "1.1.4";
 
         internal static ManualLogSource Log;
 
@@ -396,6 +396,46 @@ namespace BetterCharacterController
         /// same methods, so a leftover copy in plugins/ produces flicker and a body that stays
         /// hidden - symptoms that look exactly like a bug in this mod.
         /// </summary>
+        /// <summary>
+        /// ValheimPlus's own first person competes with ours for the camera, and it is configured
+        /// PER CLIENT: FirstPersonConfiguration extends ClientConfig, so a server running V+ does
+        /// not push that section to anyone. Setting it on the server therefore fixes nothing, and
+        /// two players with different local configs behave differently for no visible reason -
+        /// which is exactly the sort of thing nobody thinks to check.
+        ///
+        /// Read by reflection so a V+ rename degrades to no warning rather than an exception.
+        /// </summary>
+        private void WarnIfValheimPlusFirstPersonOn()
+        {
+            try
+            {
+                if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("org.bepinex.plugins.valheim_plus"))
+                    return;
+
+                Type configType = AccessTools.TypeByName("ValheimPlus.Configurations.Configuration");
+                if (configType == null) return;
+
+                object current = AccessTools.Property(configType, "Current")?.GetValue(null, null);
+                if (current == null) return;
+
+                object firstPerson = AccessTools.Property(current.GetType(), "FirstPerson")?.GetValue(current, null);
+                if (firstPerson == null) return;
+
+                object enabled = AccessTools.Property(firstPerson.GetType(), "IsEnabled")?.GetValue(firstPerson, null);
+                if (!(enabled is bool on) || !on) return;
+
+                Logger.LogWarning(
+                    "ValheimPlus [FirstPerson] is enabled on THIS client. It manages the camera's " +
+                    "minimum zoom distance, which can stop this mod's first person from ever engaging. " +
+                    "Set [FirstPerson] enabled = false in org.bepinex.plugins.valheim_plus.cfg on each " +
+                    "client - that section is client-side in V+, so setting it on the server does nothing.");
+            }
+            catch
+            {
+                // Diagnostics must never be the thing that breaks startup.
+            }
+        }
+
         private void WarnAboutConflicts()
         {
             string[] known =
@@ -405,6 +445,8 @@ namespace BetterCharacterController
                 "blacks7ar.VikingsDoSwim",              // diving
                 "ComfyMods.VerticallyChallenged",       // melee vertical aim
             };
+
+            WarnIfValheimPlusFirstPersonOn();
 
             foreach (string guid in known)
             {
