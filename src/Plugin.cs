@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.0";
+        public const string Version = "1.0.1";
 
         internal static ManualLogSource Log;
 
@@ -183,9 +183,14 @@ namespace BetterCharacterController
             LeanAlways = Config.Bind("02 - Aim lean", "leanOutsideAttack", true,
                 "Also lean while not attacking, which looks more consistent.");
 
-            LeanLocalOnly = Config.Bind("02 - Aim lean", "localPlayerOnly", false,
-                "Only lean your own character. Default false: this drives the engine's look-at " +
-                "from each character's own networked look direction, so others lean correctly.");
+            LeanLocalOnly = Config.Bind("02 - Aim lean", "localPlayerOnly", true,
+                "Only lean your own character. Leave this true.\n\n" +
+                "Valheim does not network view pitch. Character.GetLookDir() returns m_eye.forward, " +
+                "and only the local player's eye is driven by mouse input (Player.SetMouseLook -> " +
+                "SetLookDir); for everyone else that transform carries no pitch information at all. " +
+                "Applying the lean to remote players therefore aims them all the same way rather " +
+                "than where they are actually looking, which is worse than leaving them vanilla. " +
+                "Set false only if you are experimenting.");
 
             LeanSkipAreaAttacks = Config.Bind("02 - Aim lean", "skipAreaAttacks", true,
                 "Do not lean for Area or None attack types - radial slams centred on the " +

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.1
+
+**Fixed: in multiplayer the aim lean pointed every player the same way.** `localPlayerOnly` now
+defaults to `true`.
+
+The old default applied the lean to every character on the assumption that look direction is
+networked. It is not. `Character.GetLookDir()` returns `m_eye.forward`, and only the local
+player's eye is driven by mouse input (`Player.SetMouseLook` → `SetLookDir`); for a remote player
+that transform carries no pitch at all. Feeding it to the IK solver aimed everyone alike, so you
+could no longer tell where anyone was looking — worse than vanilla.
+
+Remote players are now left alone. Showing their real aim would require syncing pitch over a
+custom RPC that every client runs, which is a feature rather than a fix and is not implemented.
+
 ## 1.0
 
 First release. Four client-side features, each of which had to work around an existing engine

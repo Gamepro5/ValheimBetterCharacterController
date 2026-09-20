@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>BetterCharacterController</AssemblyName>
     <RootNamespace>BetterCharacterController</RootNamespace>
-    <Version>1.0</Version>
+    <Version>1.0.1</Version>
     <LangVersion>latest</LangVersion>
     <!-- BepInEx loads plain DLLs; no deps.json, no satellite assemblies. -->
     <GenerateDependencyFile>false</GenerateDependencyFile>

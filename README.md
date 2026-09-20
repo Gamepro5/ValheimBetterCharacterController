@@ -48,7 +48,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.0 loaded.
+[Info   : BetterCharacterController] BetterCharacterController 1.0.1 loaded.
 ```
 
 If that line is missing, the plugin is not loading and nothing in the config will change
@@ -128,6 +128,21 @@ overrides that for the frame; holding the key keeps overriding it, so you descen
 
 Local movement only. The resulting position is networked by the game as usual, so other
 players see you underwater without needing the mod.
+
+### Multiplayer
+
+The aim lean applies to **your own character only**, and cannot do better without a networking
+component. `Character.GetLookDir()` returns `m_eye.forward`, and only the local player's eye is
+driven by mouse input (`Player.SetMouseLook` → `SetLookDir`) — Valheim never sends view pitch over
+the wire. For a remote player that transform carries no pitch, so leaning them aims everyone the
+same way instead of where they are actually looking, which reads worse than leaving them vanilla.
+
+Showing other players' real aim would mean syncing pitch yourself, via a custom RPC that every
+client has to be running. That is a genuine feature, not a config change, and it is not
+implemented here.
+
+First person and diving are inherently local, so multiplayer does not affect them: the resulting
+camera and position are yours, and other players see your position move as normal.
 
 ### First person
 
