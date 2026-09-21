@@ -78,12 +78,10 @@ namespace BetterCharacterController
         private static float _lastLog;
         private static float _lastStuckWarn = -999f;
 
-        // Unconditional startup heartbeat. If the camera hook is not executing, nothing this class
-        // logs can ever appear - and that is indistinguishable from "the feature is broken". A few
-        // lines early in the session settle it without asking anyone to change a config.
+        // The zoom floor as it stood before this mod overwrote it, so the debug line can show
+        // whether another mod is competing for the field rather than only echoing our own write.
         private static float _minDistanceBeforeUs = -1f;
-        private static float _firstSeen = -1f;
-        private static float _lastAlive = -999f;
+
 
         /// <summary>
         /// The zoom floor has to be written in a PREFIX on UpdateCamera, not in the LateUpdate
@@ -142,15 +140,6 @@ namespace BetterCharacterController
 
                 float distance = DistanceRef(__instance);
 
-                if (_firstSeen < 0f) _firstSeen = Time.time;
-                if (Time.time - _firstSeen < 60f && Time.time - _lastAlive > 5f)
-                {
-                    _lastAlive = Time.time;
-                    Plugin.Log.LogInfo(
-                        $"camera hook alive: zoom={distance:F2} minDistance={MinDistanceRef(__instance):F2} " +
-                        $"(before us {_minDistanceBeforeUs:F2}) enterAt={Plugin.FpZoomThreshold.Value:F2} " +
-                        $"active={FirstPersonActive} (this reports for the first minute only)");
-                }
 
                 // Hysteresis: enter below zoomThreshold, leave only above exitZoomThreshold. With a
                 // single threshold, anything that nudges the distance as first person engages makes
@@ -292,6 +281,7 @@ namespace BetterCharacterController
                     _lastLog = Time.time;
                     Plugin.Log.LogInfo(
                         $"fp: distance={distance:F2} minDistance={MinDistanceRef(__instance):F2} " +
+                        $"(before us {_minDistanceBeforeUs:F2}) " +
                         $"eye={_height:F2} near={(cam != null ? cam.nearClipPlane.ToString("F3") : "-")} " +
                         $"hidden={_hidden.Count} culling={(_playerAnimator != null ? _playerAnimator.cullingMode.ToString() : "-")}");
                 }

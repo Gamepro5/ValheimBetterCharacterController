@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2
+
+Removed the startup heartbeat now that first person works. It existed to prove the camera hook was
+executing at all, which it did, but it has no reason to write to everyone's log every session.
+
+Normal operation now logs two lines per launch — the version with the path it loaded from, and the
+feature states — plus warnings only when something is actually wrong: a conflicting plugin, V+'s
+first person also enabled, a missing camera patch, a zoom that cannot reach the threshold, malformed
+synced angles, or a feature fault. Everything else requires `debugLogging = true`.
+
 ## 1.2.1
 
 `exitZoomThreshold` default lowered from 1.2 to 0.9, so leaving first person takes one scroll tick
