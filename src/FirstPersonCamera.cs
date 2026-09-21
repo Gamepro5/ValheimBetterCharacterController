@@ -82,6 +82,9 @@ namespace BetterCharacterController
         // whether another mod is competing for the field rather than only echoing our own write.
         private static float _minDistanceBeforeUs = -1f;
 
+        /// <summary>Zoom distance at the moment first person engaged; exit is measured against it.</summary>
+        private static float _engagedAtDistance;
+
 
         /// <summary>
         /// The zoom floor has to be written in a PREFIX on UpdateCamera, not in the LateUpdate
@@ -145,7 +148,17 @@ namespace BetterCharacterController
                 // single threshold, anything that nudges the distance as first person engages makes
                 // the two conditions fight and the mode flickers in and out every frame.
                 float enterAt = Plugin.FpZoomThreshold.Value;
-                float leaveAt = Mathf.Max(Plugin.FpExitZoomThreshold.Value, enterAt + 0.1f);
+
+                // Leaving is measured RELATIVE to where we engaged, not against an absolute value.
+                // The game applies zoom in steps whose size we do not control, so any absolute exit
+                // threshold has to be guessed against that step - and one set above it silently
+                // costs an extra scroll tick to leave. A margin above the engaged distance reacts to
+                // a single tick of any size, and cannot be tripped by anything else because the zoom
+                // distance only moves on input. The absolute threshold stays as a ceiling.
+                float leaveAt = FirstPersonActive
+                    ? Mathf.Min(Mathf.Max(Plugin.FpExitZoomThreshold.Value, enterAt + 0.1f),
+                                _engagedAtDistance + Plugin.FpExitMargin.Value)
+                    : enterAt;
                 bool zoomOk = FirstPersonActive ? distance <= leaveAt : distance <= enterAt;
 
                 string blocker = null;
@@ -216,6 +229,7 @@ namespace BetterCharacterController
                 if (!FirstPersonActive)
                 {
                     FirstPersonActive = true;
+                    _engagedAtDistance = distance;
                     _hasSmoothed = false;
                     _lastStuckWarn = -999f;
                     if (Plugin.DebugLogging.Value)

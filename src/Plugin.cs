@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.2.2";
+        public const string Version = "1.2.3";
 
         internal static ManualLogSource Log;
 
@@ -68,6 +68,7 @@ namespace BetterCharacterController
         internal static ConfigEntry<bool> FpAllowFullZoom;
         internal static ConfigEntry<float> FpZoomThreshold;
         internal static ConfigEntry<float> FpExitZoomThreshold;
+        internal static ConfigEntry<float> FpExitMargin;
         internal static ConfigEntry<float> FpEyeDropFromTop;
         internal static ConfigEntry<float> FpFallbackEyeHeight;
         internal static ConfigEntry<float> FpVerticalSmoothing;
@@ -266,11 +267,22 @@ namespace BetterCharacterController
             FpExitZoomThreshold = Config.Bind("04 - First person", "exitZoomThreshold", 0.9f,
                 new ConfigDescription(
                     "Leave first person once the zoom distance rises above this, in metres.\n\n" +
-                    "Deliberately a little higher than zoomThreshold so that entry and exit cannot " +
-                    "fight over a single value, but kept below one scroll step: the game moves the " +
-                    "zoom in increments of roughly 1, so a gap wider than that costs an extra scroll " +
-                    "tick to leave first person. Must be greater than zoomThreshold.",
+                    "Absolute safety ceiling only - exitMargin is what normally ends first person, " +
+                    "since it reacts to a single scroll tick whatever its size. This bound exists so " +
+                    "that a zoom somehow far outside first-person range always disengages. Must be " +
+                    "greater than zoomThreshold.",
                     new AcceptableValueRange<float>(0.1f, 6f)));
+
+            FpExitMargin = Config.Bind("04 - First person", "exitMargin", 0.15f,
+                new ConfigDescription(
+                    "How far the zoom must rise ABOVE the distance at which first person engaged " +
+                    "before it disengages, in metres.\n\n" +
+                    "This is what makes leaving take exactly one scroll tick regardless of how large " +
+                    "a step the game applies: an absolute threshold has to be guessed against that " +
+                    "step, and a threshold above it silently costs an extra tick. Small enough to " +
+                    "react to any real scroll, large enough that nothing else can trip it - the zoom " +
+                    "distance only changes on input.",
+                    new AcceptableValueRange<float>(0.01f, 2f)));
 
             FpEyeDropFromTop = Config.Bind("04 - First person", "eyeDropFromTop", 0.12f,
                 new ConfigDescription(

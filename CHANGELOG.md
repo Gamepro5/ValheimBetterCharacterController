@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.3
+
+**Leaving first person now takes one scroll tick, whatever the step size, and without editing an
+existing config.**
+
+1.2.1 lowered the absolute exit threshold, which only helps if the game's zoom step happens to be
+larger than the gap - and it does nothing for configs that already exist, since BepInEx keeps their
+values. Exit is now measured **relative to the distance at which first person engaged**: once the
+zoom rises more than `exitMargin` (0.15 m) above that, it disengages. That reacts to a single tick
+of any size and cannot be tripped by anything else, because the zoom distance only moves on input.
+
+`exitZoomThreshold` remains as an absolute ceiling, so a zoom somehow far outside first-person range
+always disengages.
+
 ## 1.2.2
 
 Removed the startup heartbeat now that first person works. It existed to prove the camera hook was
