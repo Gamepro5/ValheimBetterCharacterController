@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+`exitZoomThreshold` default lowered from 1.2 to 0.9, so leaving first person takes one scroll tick
+instead of two. The game moves the zoom in increments of roughly 1.0, so an exit threshold above
+that means the first tick out of first person lands below it and changes nothing. A 0.3 gap above
+`zoomThreshold` still keeps entry and exit from fighting over a single value.
+
+Existing configs keep their own value — set `exitZoomThreshold = 0.9` by hand, or delete
+`gameprog.bettercharactercontroller.cfg` to take the new defaults.
+
 ## 1.2.0
 
 **Fixed: first person never engaged on its own.** It only ever worked while ValheimPlus's own

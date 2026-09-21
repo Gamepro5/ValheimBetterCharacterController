@@ -55,7 +55,7 @@ that matter most:
 | `02 - Aim lean / maxYawDegrees` | 50 | Spine-twist guard; lower it if the torso ever corkscrews |
 | `03 - Diving / diveKey` | LeftControl | Hold and steer with the mouse |
 | `04 - First person / zoomThreshold` | 0.6 | Zoom distance at which first person engages |
-| `04 - First person / exitZoomThreshold` | 1.2 | Zoom distance at which it disengages. The gap is hysteresis — with one shared threshold the mode flickers in and out every frame |
+| `04 - First person / exitZoomThreshold` | 0.9 | Zoom distance at which it disengages. Slightly above `zoomThreshold` so entry and exit cannot fight, but below one scroll step (~1.0) — a wider gap costs an extra scroll tick to leave |
 | `04 - First person / eyeDropFromTop` | 0.12 | Eye height below the top of the hitbox |
 
 ### Is it even running?
@@ -63,7 +63,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.2.0 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
+[Info   : BetterCharacterController] BetterCharacterController 1.2.1 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
 ```
 
 The path matters as much as the version. A mod manager that installs to a folder BepInEx does not

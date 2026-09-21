@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.2.0";
+        public const string Version = "1.2.1";
 
         internal static ManualLogSource Log;
 
@@ -263,13 +263,13 @@ namespace BetterCharacterController
                 new ConfigDescription("Engage below this zoom distance, metres.",
                     new AcceptableValueRange<float>(0.05f, 4f)));
 
-            FpExitZoomThreshold = Config.Bind("04 - First person", "exitZoomThreshold", 1.2f,
+            FpExitZoomThreshold = Config.Bind("04 - First person", "exitZoomThreshold", 0.9f,
                 new ConfigDescription(
-                    "Leave first person only once the zoom distance rises above this, in metres. " +
-                    "Deliberately higher than zoomThreshold: with a single threshold, anything that " +
-                    "nudges the distance the moment first person engages makes entry and exit fight " +
-                    "each other and the mode flickers in and out every frame. The gap between the " +
-                    "two values is that hysteresis. Must be greater than zoomThreshold.",
+                    "Leave first person once the zoom distance rises above this, in metres.\n\n" +
+                    "Deliberately a little higher than zoomThreshold so that entry and exit cannot " +
+                    "fight over a single value, but kept below one scroll step: the game moves the " +
+                    "zoom in increments of roughly 1, so a gap wider than that costs an extra scroll " +
+                    "tick to leave first person. Must be greater than zoomThreshold.",
                     new AcceptableValueRange<float>(0.1f, 6f)));
 
             FpEyeDropFromTop = Config.Bind("04 - First person", "eyeDropFromTop", 0.12f,
