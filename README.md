@@ -64,7 +64,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.2.3 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
+[Info   : BetterCharacterController] BetterCharacterController 1.3.0 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
 ```
 
 The path matters as much as the version. A mod manager that installs to a folder BepInEx does not
@@ -243,9 +243,11 @@ those marks the renderer set dirty. There is no "equipment changed" event to use
 `CustomUpdate` calls `UpdateVisuals` every frame regardless — so hooking creation is what avoids
 walking the player hierarchy on idle frames.
 
-The body is hidden by setting skinned renderers to `ShadowsOnly`: body, hair and armour are
-`SkinnedMeshRenderer`s bound to the skeleton, while weapons, shields and tools are plain
-`MeshRenderer`s parented to hand bones — which is what keeps the weapon visible.
+What gets hidden is decided by **equipment slot**, read from `VisEquipment`'s own per-slot instances:
+everything is hidden except `m_rightItemInstance` and `m_leftItemInstance`, the things in your hands.
+Renderer type is not a usable signal here — helmets are not skinned meshes and some weapons are, so
+"hide skinned meshes" left helmets blocking the view while erasing weapons. Hidden renderers are set
+to `ShadowsOnly`:
 `ShadowsOnly` rather than `forceRenderingOff` matters, because fully hiding the renderers
 makes Unity treat the character as off-screen and stop evaluating the Animator, freezing the
 skeleton so the held weapon no longer follows the swing. `Animator.cullingMode` is also

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.0
+
+**Fixed: helmets stayed visible in first person and blocked the view, while some weapons vanished.**
+
+Hiding was decided by renderer type - hide skinned meshes, keep the rest - on the assumption that
+body and armour are skinned to the skeleton while held items are plain meshes. That assumption is
+wrong in both directions: **helmets are not skinned**, so they stayed in view, and **some weapons
+are**, so they disappeared.
+
+Classification is now by equipment slot, read from `VisEquipment`'s own per-slot instances
+(`m_rightItemInstance` / `m_leftItemInstance`). Everything except what is in your hands is hidden, so
+a helmet is hidden because it *is* the helmet slot - nothing depends on what kind of renderer it
+happens to use.
+
+The new `hideScope` key defaults to `AllButHeldItems`, so existing configs pick up the fix without
+being edited. `SkinnedOnly` keeps the old behaviour for comparison and `Everything` hides the weapon
+too.
+
 ## 1.2.3
 
 **Leaving first person now takes one scroll tick, whatever the step size, and without editing an

@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.2.3";
+        public const string Version = "1.3.0";
 
         internal static ManualLogSource Log;
 
@@ -79,6 +79,7 @@ namespace BetterCharacterController
         internal static ConfigEntry<bool> FpAvoidGeometry;
         internal static ConfigEntry<bool> FpHideBody;
         internal static ConfigEntry<bool> FpHideSkinnedOnly;
+        internal static ConfigEntry<HideScope> FpHideScope;
         internal static ConfigEntry<HideMethod> FpHideMethod;
         internal static ConfigEntry<bool> FpAlwaysAnimate;
         internal static ConfigEntry<bool> FpKeepBodyVisible;
@@ -92,6 +93,25 @@ namespace BetterCharacterController
         internal static bool DiveFaulted;
         internal static bool FirstPersonFaulted;
         internal static bool LookSyncFaulted;
+
+        public enum HideScope
+        {
+            /// <summary>
+            /// Hide everything except what is in your hands. Classified from VisEquipment's own
+            /// per-slot instances, so a helmet is hidden because it IS the helmet slot - not because
+            /// of what kind of renderer it happens to use.
+            /// </summary>
+            AllButHeldItems,
+
+            /// <summary>
+            /// Legacy: hide only skinned meshes. Unreliable - helmets are not skinned so they stay
+            /// in view and block it, while some weapons are skinned and wrongly disappear.
+            /// </summary>
+            SkinnedOnly,
+
+            /// <summary>Hide the entire character, weapon included.</summary>
+            Everything
+        }
 
         public enum HideMethod
         {
@@ -332,6 +352,15 @@ namespace BetterCharacterController
 
             FpHideBody = Config.Bind("04 - First person", "hideBody", true,
                 "Hide the character model while in first person, keeping the weapon visible.");
+
+            FpHideScope = Config.Bind("04 - First person", "hideScope", HideScope.AllButHeldItems,
+                "What to hide while in first person.\n\n" +
+                "AllButHeldItems hides everything except the items in your hands, classified from " +
+                "VisEquipment's own per-slot instances. That is what keeps a helmet out of your view " +
+                "while leaving your weapon on screen - the previous test, 'hide only skinned meshes', " +
+                "got both wrong, because helmets are not skinned and some weapons are.\n\n" +
+                "SkinnedOnly is that old behaviour, kept only for comparison. Everything hides the " +
+                "weapon too.");
 
             FpHideSkinnedOnly = Config.Bind("04 - First person", "hideSkinnedOnly", true,
                 "Hide only skinned meshes. Body, hair and armour are skinned to the skeleton, " +

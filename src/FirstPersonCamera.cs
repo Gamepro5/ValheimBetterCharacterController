@@ -46,6 +46,14 @@ namespace BetterCharacterController
         private static readonly AccessTools.FieldRef<Character, bool> LodVisibleRef =
             AccessTools.FieldRefAccess<Character, bool>("m_lodVisible");
 
+        // The held-item slots. Classifying by slot is the only reliable way to tell a helmet from a
+        // weapon: renderer type does not correlate (helmets are not skinned, some weapons are).
+        private static readonly AccessTools.FieldRef<VisEquipment, GameObject> RightItemRef =
+            AccessTools.FieldRefAccess<VisEquipment, GameObject>("m_rightItemInstance");
+
+        private static readonly AccessTools.FieldRef<VisEquipment, GameObject> LeftItemRef =
+            AccessTools.FieldRefAccess<VisEquipment, GameObject>("m_leftItemInstance");
+
         internal static bool FirstPersonActive { get; private set; }
 
         private static float _savedNearClip = -1f;
@@ -71,6 +79,9 @@ namespace BetterCharacterController
         private static readonly Dictionary<int, ShadowCastingMode> _originalShadowModes =
             new Dictionary<int, ShadowCastingMode>();
         private static readonly List<Renderer> _hidden = new List<Renderer>();
+
+        /// <summary>Renderer ids belonging to held items, which must stay visible.</summary>
+        private static readonly HashSet<int> _keepVisible = new HashSet<int>();
 
         // Set while we call SetVisible ourselves, so our own prefix lets it through.
         private static bool _forcingVisible;
@@ -430,19 +441,34 @@ namespace BetterCharacterController
 
             if (rescan || _hidden.Count == 0)
             {
-                // Additive: pick up anything new (equipment changes spawn fresh renderers) without
-                // ever clearing, so an original is never re-captured from a concealed value.
+                BuildKeepSet(player);
+
                 foreach (Renderer r in player.GetComponentsInChildren<Renderer>(true))
                 {
                     if (r == null) continue;
-                    if (Plugin.FpHideSkinnedOnly.Value && !(r is SkinnedMeshRenderer)) continue;
-
                     int id = r.GetInstanceID();
+
+                    if (_keepVisible.Contains(id))
+                    {
+                        // Held now, but possibly hidden while it was in another slot or before it was
+                        // drawn. Restore it individually rather than clearing everything, so the
+                        // recorded originals of other renderers stay intact.
+                        Reveal(r, id);
+                        continue;
+                    }
+
+                    if (!ShouldHide(r)) continue;
+
                     if (!_originalShadowModes.ContainsKey(id))
                     {
                         _originalShadowModes[id] = r.shadowCastingMode;
                         _hidden.Add(r);
                     }
+                }
+
+                for (int i = _hidden.Count - 1; i >= 0; i--)
+                {
+                    if (_hidden[i] == null) _hidden.RemoveAt(i);
                 }
             }
 
@@ -450,12 +476,58 @@ namespace BetterCharacterController
             {
                 if (r != null) Conceal(r);
             }
+        }
 
-            // Drop destroyed renderers so the list cannot grow without bound.
-            for (int i = _hidden.Count - 1; i >= 0; i--)
+        /// <summary>
+        /// Collects the renderers of whatever is in the character's hands, read from VisEquipment's
+        /// own slot instances. Slot is the reliable signal: a helmet is hidden because it is the
+        /// helmet slot, not because of what kind of renderer it uses.
+        /// </summary>
+        private static void BuildKeepSet(Player player)
+        {
+            _keepVisible.Clear();
+
+            if (Plugin.FpHideScope.Value != Plugin.HideScope.AllButHeldItems) return;
+
+            VisEquipment vis = player.GetComponentInChildren<VisEquipment>();
+            if (vis == null) return;
+
+            AddRenderers(RightItemRef(vis));
+            AddRenderers(LeftItemRef(vis));
+        }
+
+        private static void AddRenderers(GameObject item)
+        {
+            if (item == null) return;
+
+            foreach (Renderer r in item.GetComponentsInChildren<Renderer>(true))
             {
-                if (_hidden[i] == null) _hidden.RemoveAt(i);
+                if (r != null) _keepVisible.Add(r.GetInstanceID());
             }
+        }
+
+        private static bool ShouldHide(Renderer r)
+        {
+            switch (Plugin.FpHideScope.Value)
+            {
+                case Plugin.HideScope.SkinnedOnly:
+                    return !Plugin.FpHideSkinnedOnly.Value || r is SkinnedMeshRenderer;
+                default:
+                    // AllButHeldItems and Everything both hide anything not in the keep set, which is
+                    // empty for Everything.
+                    return true;
+            }
+        }
+
+        /// <summary>Restores one renderer and stops tracking it.</summary>
+        private static void Reveal(Renderer r, int id)
+        {
+            if (!_originalShadowModes.TryGetValue(id, out ShadowCastingMode mode)) return;
+
+            r.forceRenderingOff = false;
+            r.shadowCastingMode = mode;
+            _originalShadowModes.Remove(id);
+            _hidden.Remove(r);
         }
 
         private static void Conceal(Renderer r)
