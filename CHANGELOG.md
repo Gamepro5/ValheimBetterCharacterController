@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.6
+
+Adds an unconditional heartbeat from the camera hook for the first minute of a session:
+
+```
+camera hook alive: zoom=2.30 minDistance=1.50 enterAt=0.60 active=False (this reports for the first minute only)
+```
+
+Every diagnostic so far lived *inside* that hook, so if the hook is not executing they all stay
+silent - which is indistinguishable from the feature being broken, and is the state several rounds
+of debugging could not tell apart. This needs no config change and stops on its own.
+
 ## 1.1.5
 
 Fixes two diagnostic mistakes that hid why first person was not engaging.

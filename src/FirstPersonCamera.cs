@@ -78,6 +78,12 @@ namespace BetterCharacterController
         private static float _lastLog;
         private static float _lastStuckWarn = -999f;
 
+        // Unconditional startup heartbeat. If the camera hook is not executing, nothing this class
+        // logs can ever appear - and that is indistinguishable from "the feature is broken". A few
+        // lines early in the session settle it without asking anyone to change a config.
+        private static float _firstSeen = -1f;
+        private static float _lastAlive = -999f;
+
         /// <summary>
         /// LateUpdate is the outermost camera method - it calls UpdateCamera internally - so
         /// enforcing the position here lands after vanilla and after any mod patching UpdateCamera.
@@ -105,6 +111,16 @@ namespace BetterCharacterController
                 }
 
                 float distance = DistanceRef(__instance);
+
+                if (_firstSeen < 0f) _firstSeen = Time.time;
+                if (Time.time - _firstSeen < 60f && Time.time - _lastAlive > 5f)
+                {
+                    _lastAlive = Time.time;
+                    Plugin.Log.LogInfo(
+                        $"camera hook alive: zoom={distance:F2} minDistance={MinDistanceRef(__instance):F2} " +
+                        $"enterAt={Plugin.FpZoomThreshold.Value:F2} active={FirstPersonActive} " +
+                        $"(this reports for the first minute only)");
+                }
 
                 // Hysteresis: enter below zoomThreshold, leave only above exitZoomThreshold. With a
                 // single threshold, anything that nudges the distance as first person engages makes
