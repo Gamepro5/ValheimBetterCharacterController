@@ -63,7 +63,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.1.6 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
+[Info   : BetterCharacterController] BetterCharacterController 1.2.0 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
 ```
 
 The path matters as much as the version. A mod manager that installs to a folder BepInEx does not
@@ -208,11 +208,17 @@ camera and position are yours, and other players see your position move as norma
 
 Three separate traps, each of which looked like a positioning bug:
 
-1. **`m_minDistance` floors the zoom.** It sits well above any sensible first-person
-   threshold, so without forcing it to 0 the mode can never engage — you simply stay in
-   vanilla's closest third-person view, which orbits a pivot and therefore rises when you
-   look up and sits forward of the body when level. Symptoms that look exactly like broken
+1. **`m_minDistance` floors the zoom, and *where* you write it matters.** It sits well above any
+   sensible first-person threshold, so without forcing it to 0 the mode can never engage — you
+   simply stay in vanilla's closest third-person view, which orbits a pivot and therefore rises
+   when you look up and sits forward of the body when level. Symptoms that look exactly like broken
    first-person code, while none of that code is running.
+
+   `UpdateCamera` reads that field into a local at the top and clamps against it at the bottom, so
+   it must be written from a **prefix** on `UpdateCamera`, not from a postfix further out. A
+   postfix write only lands for the next call, and ValheimPlus has its own prefix on the same
+   method writing the same field — whoever writes last before the original body wins.
+   `Priority.Last` secures that position.
 2. **Offsets must be in the body's frame, not the view's.** An offset along the camera's
    forward vector ties camera height to pitch and pokes out of the hitbox when level. Here
    they are in the character's horizontal frame and default to zero, so the camera sits on

@@ -81,8 +81,40 @@ namespace BetterCharacterController
         // Unconditional startup heartbeat. If the camera hook is not executing, nothing this class
         // logs can ever appear - and that is indistinguishable from "the feature is broken". A few
         // lines early in the session settle it without asking anyone to change a config.
+        private static float _minDistanceBeforeUs = -1f;
         private static float _firstSeen = -1f;
         private static float _lastAlive = -999f;
+
+        /// <summary>
+        /// The zoom floor has to be written in a PREFIX on UpdateCamera, not in the LateUpdate
+        /// postfix where it used to live.
+        ///
+        /// UpdateCamera reads m_minDistance into a local at the top and clamps m_distance against
+        /// it at the bottom. Writing the field from a postfix therefore only affects the NEXT call -
+        /// and ValheimPlus has its own prefix on UpdateCamera (BlockCameraScrollInAEM) that writes
+        /// m_minDistance, so it always got the last word before the clamp and the zoom stayed
+        /// floored at vanilla's minimum. First person could then only engage while V+'s own
+        /// first person happened to be lowering the floor for its own purposes.
+        ///
+        /// Priority.Last makes this the last prefix to run, immediately before the original body,
+        /// so the clamp in the same call uses our value regardless of what any other mod did.
+        /// </summary>
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.Last)]
+        [HarmonyPatch(typeof(GameCamera), "UpdateCamera")]
+        private static void BeforeUpdateCamera(GameCamera __instance)
+        {
+            try
+            {
+                _minDistanceBeforeUs = MinDistanceRef(__instance);
+                ApplyZoomLimit(__instance);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"zoom limit failed, disabling first person: {e}");
+                Plugin.FirstPersonFaulted = true;
+            }
+        }
 
         /// <summary>
         /// LateUpdate is the outermost camera method - it calls UpdateCamera internally - so
@@ -95,8 +127,6 @@ namespace BetterCharacterController
         {
             try
             {
-                ApplyZoomLimit(__instance);
-
                 Player player = Player.m_localPlayer;
                 Camera cam = CameraRef(__instance);
 
@@ -118,8 +148,8 @@ namespace BetterCharacterController
                     _lastAlive = Time.time;
                     Plugin.Log.LogInfo(
                         $"camera hook alive: zoom={distance:F2} minDistance={MinDistanceRef(__instance):F2} " +
-                        $"enterAt={Plugin.FpZoomThreshold.Value:F2} active={FirstPersonActive} " +
-                        $"(this reports for the first minute only)");
+                        $"(before us {_minDistanceBeforeUs:F2}) enterAt={Plugin.FpZoomThreshold.Value:F2} " +
+                        $"active={FirstPersonActive} (this reports for the first minute only)");
                 }
 
                 // Hysteresis: enter below zoomThreshold, leave only above exitZoomThreshold. With a

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.2.0
+
+**Fixed: first person never engaged on its own.** It only ever worked while ValheimPlus's own
+first person happened to be lowering the camera's zoom floor for its own purposes — with V+'s
+first person off, as it is by default, this mod's first person could not engage at all.
+
+The zoom floor was being written from the `GameCamera.LateUpdate` postfix. `UpdateCamera` reads
+`m_minDistance` into a local at the top and clamps `m_distance` against it at the bottom, so a
+postfix write only affects the *next* call — and ValheimPlus has a **prefix** on `UpdateCamera`
+(`BlockCameraScrollInAEM`) that writes `m_minDistance` too. Its prefix therefore always got the
+last word before the clamp, and the zoom stayed pinned at vanilla's minimum of 1.0 while this mod
+needed 0.6.
+
+The floor is now written from a prefix on `UpdateCamera` with `Priority.Last`, making it the last
+writer before the original body runs, so the clamp in that same call uses it regardless of what
+other mods do.
+
+The heartbeat also reports the value that was in place *before* this mod overwrote it
+(`before us 1.00`). Previously it logged only the value after our own write, which read as
+`minDistance=0.00` and looked like proof the write was effective — it was not.
+
 ## 1.1.6
 
 Adds an unconditional heartbeat from the camera hook for the first minute of a session:
