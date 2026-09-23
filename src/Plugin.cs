@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.4.0";
+        public const string Version = "1.5.0";
 
         internal static ManualLogSource Log;
 
@@ -87,6 +87,10 @@ namespace BetterCharacterController
         // ---- achievements ----
         internal static ConfigEntry<bool> AchievementsEnabled;
 
+        // ---- hold to interact ----
+        internal static ConfigEntry<bool> FastHoldEnabled;
+        internal static ConfigEntry<float> FastHoldInterval;
+
         internal static ConfigEntry<bool> DebugLogging;
 
         // Set when a feature throws, to stop it running for the rest of the session. Deliberately
@@ -96,6 +100,7 @@ namespace BetterCharacterController
         internal static bool DiveFaulted;
         internal static bool FirstPersonFaulted;
         internal static bool LookSyncFaulted;
+        internal static bool FastHoldFaulted;
 
         public enum HideScope
         {
@@ -395,6 +400,22 @@ namespace BetterCharacterController
                 "Nothing is awarded retroactively: progress made while achievements were blocked was " +
                 "discarded at the time rather than withheld.");
 
+            // ------------------------------------------------- hold to interact ----
+            FastHoldEnabled = Config.Bind("08 - Hold to interact", "enabled", true,
+                "Speed up holding the use key to feed a station, so filling a smelter does not " +
+                "mean holding the key on the chute for ten seconds.\n\n" +
+                "Two things throttle a held interaction: a hard-coded 0.2s ceiling in " +
+                "Player.Interact, and a per-station interval that is usually much longer than " +
+                "that. Both are reduced to the interval below. Switches that do not repeat at all " +
+                "in vanilla - doors, levers, beds - are left alone.");
+
+            FastHoldInterval = Config.Bind("08 - Hold to interact", "interval", 0.05f,
+                new ConfigDescription(
+                    "Seconds between repeats while the use key is held. 0.05 is twenty per second. " +
+                    "Each repeat is still a normal interaction, so nothing is duplicated - this " +
+                    "only changes how often the game is willing to accept one.",
+                    new AcceptableValueRange<float>(0.01f, 1f)));
+
             DebugLogging = Config.Bind("99 - Advanced", "debugLogging", false,
                 "Log lean weights, first-person state and dive state once per second.");
 
@@ -407,6 +428,7 @@ namespace BetterCharacterController
             harmony.PatchAll(typeof(FirstPersonCamera));
             harmony.PatchAll(typeof(EquipmentWatcher));
             harmony.PatchAll(typeof(AchievementUnblock));
+            harmony.PatchAll(typeof(FastHoldInteract));
 
             // Name the version AND where this assembly was loaded from. Both have cost real
             // debugging time: a stale copy looks identical to a mod ignoring your fixes, and a mod

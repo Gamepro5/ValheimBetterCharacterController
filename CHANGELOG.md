@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.5.0
+
+**Holding the use key fills a station at a usable rate.**
+
+Feeding a smelter meant holding the key on the chute for ten seconds a stack, or spam-clicking. Two
+independent gates cause that, and both had to go:
+
+* `Player.Interact` returns early unless `Time.time - m_lastHoverInteractTime >= 0.2f` - a
+  hard-coded ceiling of five interactions per second, regardless of what is being used.
+* `Switch.Interact` returns early unless `Time.time - m_lastUseTime >= m_holdRepeatInterval`, a
+  per-prefab value. This is the one that actually hurts: an ore chute's interval is far longer than
+  0.2s.
+
+Both are reduced to a configurable interval, default 0.05s (twenty per second). Each repeat is still
+an ordinary interaction that spends one real item - the change is only how often the game is willing
+to accept one, so nothing is duplicated.
+
+The 0.2s ceiling is bypassed by back-dating the timestamp rather than by transpiling the constant.
+A transpiler reads better but breaks when the game moves that constant, and the game updates often.
+Our own timer does the rate limiting that the vanilla gate stops doing.
+
+**Switches that do not repeat in vanilla are left alone.** An interval of zero is how the game says
+"this cannot be held" - doors, levers, beds - and only intervals above our own are shortened, never
+lengthened. That also means a station added by a future update is covered as soon as it exists,
+without naming it here.
+
 ## 1.4.0
 
 **Steam achievements work again in a modded session.**
