@@ -9,6 +9,7 @@ BepInEx, nothing installed on the server.
 | **Aim lean** | The upper body pitches toward your aim, so the swing matches where the hit lands |
 | **Diving** | Swim downward instead of being stuck at the surface |
 | **First person** | Engages on zoom, no head bob, body hidden and weapon visible |
+| **Achievements** | Keeps Steam achievements working in a modded session, via the game's own supported bypass |
 
 Built and tested against Valheim `l-1.0.14` (build 25364309) with BepInEx `5.4.23.5`.
 
@@ -64,7 +65,7 @@ that matter most:
 `BepInEx/LogOutput.log` should contain, at startup:
 
 ```
-[Info   : BetterCharacterController] BetterCharacterController 1.3.0 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
+[Info   : BetterCharacterController] BetterCharacterController 1.4.0 loaded from F:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\BetterCharacterController.dll
 ```
 
 The path matters as much as the version. A mod manager that installs to a folder BepInEx does not

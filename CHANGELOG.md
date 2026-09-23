@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.0
+
+**Steam achievements work again in a modded session.**
+
+Valheim blocks achievements when `Achievements.IsCheatedAtAll()` is true, and one of the four things
+that makes it true is simply `Game.isModded`. So a rebalanced server loses achievements even when
+nobody has cheated - the check asks whether the session is modified, not whether the player gained an
+advantage.
+
+The game ships a supported bypass. `PlayerProfile.s_bypassCheatChecks` is not a field; it reads a
+per-character key, `bypasscheatchecks` set to `"1"`, which the console sets via
+`setkey bypasscheatchecks 1`. Doing that manually means every player enabling devcommands first, so
+this returns true from the getter instead: same effect, applied for everyone running the mod, and
+**nothing is written to any character file** - removing the mod restores vanilla behaviour exactly.
+
+Nothing is awarded retroactively. Progress made while achievements were blocked was discarded at the
+time rather than withheld, so it cannot be recovered.
+
+The scope note is widened accordingly, and deliberately: client-side per-player behaviour, which is
+what achievements are (Steam awards them per account through the player's own client). Server balance
+still belongs in ValheimPlus.
+
 ## 1.3.0
 
 **Fixed: helmets stayed visible in first person and blocked the view, while some weapons vanished.**

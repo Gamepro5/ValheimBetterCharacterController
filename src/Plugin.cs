@@ -26,7 +26,7 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.3.0";
+        public const string Version = "1.4.0";
 
         internal static ManualLogSource Log;
 
@@ -83,6 +83,9 @@ namespace BetterCharacterController
         internal static ConfigEntry<HideMethod> FpHideMethod;
         internal static ConfigEntry<bool> FpAlwaysAnimate;
         internal static ConfigEntry<bool> FpKeepBodyVisible;
+
+        // ---- achievements ----
+        internal static ConfigEntry<bool> AchievementsEnabled;
 
         internal static ConfigEntry<bool> DebugLogging;
 
@@ -381,6 +384,17 @@ namespace BetterCharacterController
                 "Character.SetVisible drives an LODGroup and at very close camera range can cull " +
                 "the body away, taking your arms and weapon with it.");
 
+            // ------------------------------------------------- achievements ----
+            AchievementsEnabled = Config.Bind("07 - Achievements", "enabled", true,
+                "Keep Steam achievements working in a modded session.\n\n" +
+                "Valheim blocks achievements whenever Game.isModded is set, alongside the actual " +
+                "cheat flags - so a rebalanced server loses them even when nobody has cheated. The " +
+                "game provides a supported bypass, a per-character key the console sets with " +
+                "\"setkey bypasscheatchecks 1\"; this applies the same bypass for everyone running " +
+                "the mod, without writing anything to your character file.\n\n" +
+                "Nothing is awarded retroactively: progress made while achievements were blocked was " +
+                "discarded at the time rather than withheld.");
+
             DebugLogging = Config.Bind("99 - Advanced", "debugLogging", false,
                 "Log lean weights, first-person state and dive state once per second.");
 
@@ -392,6 +406,7 @@ namespace BetterCharacterController
             harmony.PatchAll(typeof(Diving));
             harmony.PatchAll(typeof(FirstPersonCamera));
             harmony.PatchAll(typeof(EquipmentWatcher));
+            harmony.PatchAll(typeof(AchievementUnblock));
 
             // Name the version AND where this assembly was loaded from. Both have cost real
             // debugging time: a stale copy looks identical to a mod ignoring your fixes, and a mod
