@@ -1,0 +1,258 @@
+name: Release
+
+# Builds the plugin and attaches it to a DRAFT GitHub Release.
+#
+# Same three ways in as Modifile, because they are the things a person actually does:
+#   - Actions -> Release -> Run workflow, box left empty. The last released version gets its
+#     patch number bumped, the tag is made for you, and the commit you ran it from is what
+#     ships. Nothing to type, nothing to bump, nothing to commit first.
+#   - push a tag:            git tag 1.7.0 && git push origin 1.7.0
+#   - publish a release through the GitHub web UI
+#
+# Tags are matched with and without a leading v. A tag matching neither pattern silently does
+# nothing, which is a miserable way to spend an afternoon.
+#
+# The tag IS the version: it is stamped over Plugin.Version in the runner's checkout, so the
+# two cannot disagree and no commit is needed to keep them in step. Nothing is committed back.
+#
+# Why this needs a game download: the plugin compiles against assembly_valheim.dll and friends,
+# which cannot be committed to a public repo. The DEDICATED SERVER app (896660) is downloadable
+# with `login anonymous`, and ships the same managed assemblies as the client - which is how
+# this mod is built locally too. No credentials, no secrets.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+      - '[0-9]*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to release. Leave blank to bump the last one.'
+        required: false
+
+permissions:
+  contents: write
+
+# Tagging and then publishing a release from that tag fires twice. Let the second run wait
+# rather than race the first one's asset uploads.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  VALHEIM_APPID: '896660'
+  # The BepInEx build the mod is compiled and tested against.
+  BEPINEX_VERSION: '5.4.2350'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  # Decide what this release is called, and make sure a tag by that name exists on the commit
+  # being released. This job is why "Run workflow" is enough on its own.
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # A tag push or a published release already names itself.
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            tag="${{ github.ref_name }}"
+            echo "releasing $tag (named by the trigger)"
+          else
+            asked="${{ inputs.tag }}"
+            if [ -n "$asked" ]; then
+              tag="$asked"
+            else
+              # Newest release (drafts included - this workflow only makes drafts, so ignoring
+              # them would hand out the same number twice in a row).
+              last=$(gh release list --limit 1 --json tagName \
+                       --jq '.[0].tagName // "0.0.0"' 2>/dev/null || echo "0.0.0")
+              tag=$(echo "${last#v}" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')
+              echo "last release was '${last}', so this one is '${tag}'"
+            fi
+
+            # Point the tag at the commit this run was started from. --force so a release that
+            # failed to build can be retried on a newer commit under the same name.
+            git tag --force "$tag" "${{ github.sha }}"
+            git push --force origin "refs/tags/$tag"
+            echo "tagged ${{ github.sha }} as $tag"
+          fi
+
+          # v1.2 and 1.2 are the same tag; 1.2 and 1.2.0 are the same version. BepInEx parses
+          # the plugin version as a System.Version, so it must be numeric and dotted.
+          version=$(echo "${tag#v}" | awk -F. '{printf "%d.%d.%d", $1, $2, $3}')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install steamcmd
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends lib32gcc-s1 curl unzip
+          mkdir -p ~/steamcmd
+          curl -sSfL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+            | tar -xz -C ~/steamcmd
+
+      # Ask which build is current BEFORE downloading 1GB+ of depot, so the cache key describes
+      # the assemblies exactly. A stale cache would silently compile against old game APIs,
+      # which is the kind of thing that only shows up once it is shipped.
+      - name: Resolve the current Valheim build id
+        id: valheim
+        run: |
+          set -euo pipefail
+          out=$(~/steamcmd/steamcmd.sh +login anonymous \
+                  +app_info_update 1 +app_info_print "$VALHEIM_APPID" +quit 2>/dev/null || true)
+          # The public branch's build id, from the nested app info dump:
+          #   "branches" { "public" { "buildid" "25390671"
+          buildid=$(printf '%s' "$out" | awk '
+            /"branches"/            { inbranches = 1 }
+            inbranches && /"public"/ { inpublic = 1 }
+            inpublic && /"buildid"/  { match($0, /[0-9]+/)
+                                       print substr($0, RSTART, RLENGTH); exit }')
+          if [ -z "$buildid" ]; then
+            # Never key the cache on something unknown: fall back to a value that expires daily
+            # rather than one that pins stale assemblies forever.
+            buildid="unknown-$(date -u +%Y%m%d)"
+            echo "::warning::Could not read the Valheim build id; using cache key $buildid"
+          fi
+          echo "buildid=$buildid" >> "$GITHUB_OUTPUT"
+          echo "Valheim public build: $buildid"
+
+      - name: Cache the game's managed assemblies
+        id: cache-managed
+        uses: actions/cache@v4
+        with:
+          path: ~/valheim-managed
+          key: valheim-managed-${{ steps.valheim.outputs.buildid }}
+
+      - name: Download the dedicated server (anonymous)
+        if: steps.cache-managed.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          ~/steamcmd/steamcmd.sh +force_install_dir "$HOME/valheim-server" \
+            +login anonymous +app_update "$VALHEIM_APPID" validate +quit
+          # Only the managed assemblies are worth caching; the rest is ~1GB of assets.
+          mkdir -p ~/valheim-managed
+          cp "$HOME/valheim-server/valheim_server_Data/Managed/"*.dll ~/valheim-managed/
+          echo "cached $(ls ~/valheim-managed | wc -l) assemblies"
+
+      - name: Fetch BepInEx
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/bepinex.zip \
+            "https://gcdn.thunderstore.io/live/repository/packages/denikson-BepInExPack_Valheim-${BEPINEX_VERSION}.zip"
+          unzip -q /tmp/bepinex.zip -d /tmp/bepinex
+          echo "BEPINEX_CORE=/tmp/bepinex/BepInExPack_Valheim/BepInEx/core" >> "$GITHUB_ENV"
+          test -f /tmp/bepinex/BepInExPack_Valheim/BepInEx/core/BepInEx.dll
+
+      # The tag is the version. The stamp lives only in the runner's checkout, which is what
+      # makes a tag enough on its own.
+      - name: Stamp the version from the tag
+        run: |
+          set -euo pipefail
+          version="${{ needs.version.outputs.version }}"
+          sed -i 's/public const string Version = "[^"]*";/public const string Version = "'"$version"'";/' src/Plugin.cs
+          got=$(grep -oP 'public const string Version = "\K[^"]+' src/Plugin.cs)
+          if [ "$got" != "$version" ]; then
+            echo "::error::Wanted version $version but Plugin.cs says '$got'. The declaration's shape must have changed."
+            exit 1
+          fi
+          echo "building $version"
+
+      - name: Build
+        env:
+          GAME_MANAGED: /home/runner/valheim-managed
+        run: ./build.sh
+
+      # A guard has to look in the right metadata heap: identifiers are UTF-8, string literals
+      # are UTF-16. Grepping a literal in ASCII always fails, and a check that cannot pass is
+      # worse than none, because it gets worked around. Kept as a script so it can be run by
+      # hand against a local build too.
+      - name: Verify the built assembly
+        run: python3 .github/verify-build.py BetterCharacterController.dll "${{ needs.version.outputs.version }}"
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          version="${{ needs.version.outputs.version }}"
+          mkdir -p dist
+
+          # Bare DLL: what a mod manager that drops files into BepInEx/plugins wants.
+          cp BetterCharacterController.dll dist/
+
+          # BepInEx-layout zip: unpacks straight over a Valheim install.
+          staging=$(mktemp -d)
+          mkdir -p "$staging/BepInEx/plugins"
+          cp BetterCharacterController.dll "$staging/BepInEx/plugins/"
+          cp README.md CHANGELOG.md "$staging/"
+          [ -f LICENSE ] && cp LICENSE "$staging/" || true
+          ( cd "$staging" && zip -qr "$GITHUB_WORKSPACE/dist/BetterCharacterController-${version}.zip" . )
+
+          ( cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt )
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish draft
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # Always a draft: a release is public the moment it exists, and a bad build cannot be
+      # unpublished from the people who already have it. This mod ships a multiplier and a
+      # camera - check it in game, edit the notes, then press Publish.
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            echo "updated the assets on $TAG"
+          else
+            gh release create "$TAG" dist/* \
+              --title "BetterCharacterController $TAG" \
+              --generate-notes \
+              --draft
+            echo "created draft release $TAG"
+          fi
