@@ -26,13 +26,14 @@ namespace BetterCharacterController
     {
         public const string Guid = "gameprog.bettercharactercontroller";
         public const string Name = "BetterCharacterController";
-        public const string Version = "1.5.0";
+        public const string Version = "1.6.0";
 
         internal static ManualLogSource Log;
 
         // ---- melee aim ----
         internal static ConfigEntry<bool> MeleeAimEnabled;
         internal static ConfigEntry<float> MeleeMaxYAngle;
+        internal static ConfigEntry<bool> MeleeExactPitch;
 
         // ---- aim lean ----
         internal static ConfigEntry<bool> LeanEnabled;
@@ -101,6 +102,7 @@ namespace BetterCharacterController
         internal static bool FirstPersonFaulted;
         internal static bool LookSyncFaulted;
         internal static bool FastHoldFaulted;
+        internal static bool MeleeExactPitchFaulted;
 
         public enum HideScope
         {
@@ -154,6 +156,18 @@ namespace BetterCharacterController
                     "above the character so attacks can then pass under a close target. Attacks " +
                     "that already allow more than this are left alone.",
                     new AcceptableValueRange<float>(0f, 90f)));
+
+            MeleeExactPitch = Config.Bind("01 - Melee aim", "exactPitch", true,
+                "Make the swing go at the angle you actually aimed.\n\n" +
+                "Attack.GetMeleeAttackDir keeps the body's horizontal forward but takes only the " +
+                "vertical component of the aim direction and renormalises, so the pitch it produces " +
+                "is atan(sin(pitch)) rather than pitch - always shallower than you aimed. Aiming " +
+                "10 degrees up gives 9.8, 30 gives 26.6, 45 gives 35.3. The swing therefore lands " +
+                "below the crosshair when aiming up, and above it when aiming down.\n\n" +
+                "This rebuilds the direction from the real pitch, still clamped to maxYAngle above. " +
+                "Only the vertical angle changes; horizontally the swing stays on the body's " +
+                "facing, as vanilla intends and the animation expects. Applied to your own " +
+                "character only, so creature attacks are untouched.");
 
             // ------------------------------------------------------------ aim lean ----
             LeanEnabled = Config.Bind("02 - Aim lean", "enabled", true,

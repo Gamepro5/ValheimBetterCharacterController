@@ -47,11 +47,15 @@ namespace BetterCharacterController
 
                 bool isLocal = Player.m_localPlayerExists && ReferenceEquals(character, Player.m_localPlayer);
 
-                // Before any display gating: what other clients see of us must not depend on
-                // whether we happen to render a lean ourselves.
-                if (isLocal) LookSync.PublishLocal(character);
+                // One predicate drives both what we render and what we tell other clients, so the
+                // two cannot disagree. They used to: publishing was deliberately independent of
+                // display gating, which meant a player sitting in a boat or asleep still appeared
+                // to everyone else to be aiming around.
+                bool active = LeanActiveFor(character);
 
-                if (!Plugin.LeanEnabled.Value || Plugin.LeanFaulted) return;
+                if (isLocal) LookSync.PublishLocal(character, active);
+
+                if (!active) return;
 
                 if (Plugin.LeanLocalOnly.Value && !isLocal)
                 {
@@ -65,12 +69,6 @@ namespace BetterCharacterController
 
                 Transform head = HeadRef(__instance);
                 if (head == null) return;
-
-                if (character.IsAttached()) return;   // sitting or riding: vanilla zeroes this too
-
-                bool attacking = character.InAttack();
-                if (attacking && !Plugin.LeanDuringAttack.Value) return;
-                if (!attacking && !Plugin.LeanAlways.Value) return;
 
                 int id = __instance.GetInstanceID();
                 bool firstThisFrame = NewFrame(id);
@@ -102,7 +100,8 @@ namespace BetterCharacterController
                     Attack dbg = CurrentAttack(character);
                     Note(id, isLocal,
                         $"leaned via {(isLocal ? "local" : "sync")} weight={weight:F2} scale={scale:F2} " +
-                        $"attack={(dbg != null ? dbg.m_attackType.ToString() : "none")} attacking={attacking}");
+                        $"attack={(dbg != null ? dbg.m_attackType.ToString() : "none")} " +
+                        $"attacking={character.InAttack()}");
                 }
                 Report(isLocal);
 
@@ -215,6 +214,36 @@ namespace BetterCharacterController
         /// View angles for this character: measured locally for our own player and published for
         /// others to read, or read from the ZDO for a remote player that publishes them.
         /// </summary>
+        /// <summary>
+        /// Whether the lean should be running for this character at all.
+        ///
+        /// Deliberately the single source of truth: it decides what we draw AND what we publish for
+        /// other clients to draw. Anything that suppresses the lean locally must also stop us
+        /// telling everyone else where we are looking, otherwise we sit motionless in a boat on our
+        /// own screen while still craning our neck around on theirs.
+        ///
+        /// Note what is NOT here: localPlayerOnly. That is a viewer-side preference about whether
+        /// we render OTHER people's leaning, and has nothing to do with whether ours is suppressed,
+        /// so it must not gate publishing.
+        /// </summary>
+        private static bool LeanActiveFor(Character character)
+        {
+            if (!Plugin.LeanEnabled.Value || Plugin.LeanFaulted) return false;
+
+            // Sitting, riding, steering or sitting in a boat, and sleeping all attach the character;
+            // vanilla zeroes the look-at in these states too. InBed is checked separately because a
+            // player can be in bed without being attached while the sleep is starting.
+            if (character.IsAttached()) return false;
+            if (character.InBed()) return false;
+            if (character.IsDead()) return false;
+
+            bool attacking = character.InAttack();
+            if (attacking && !Plugin.LeanDuringAttack.Value) return false;
+            if (!attacking && !Plugin.LeanAlways.Value) return false;
+
+            return true;
+        }
+
         private static bool TryGetAngles(Character character, bool isLocal, out float pitch, out float yaw)
         {
             return isLocal

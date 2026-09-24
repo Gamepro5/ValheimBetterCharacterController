@@ -31,6 +31,17 @@ namespace BetterCharacterController
         private const string PitchKey = "bcc_look_pitch";
         private const string YawKey = "bcc_look_yaw";
 
+        /// <summary>
+        /// Whether the publisher's lean is active at all. Needed because ZDO fields cannot be
+        /// removed: without an explicit flag, the last angles we published would linger and a
+        /// player who sat down in a boat would keep aiming those angles on everyone else's screen
+        /// forever.
+        ///
+        /// 1 = leaning, 0 = suppressed on that client. ABSENT means a peer on a build that never
+        /// published the flag, and is treated as active so those peers keep working as before.
+        /// </summary>
+        private const string ActiveKey = "bcc_look_on";
+
         private static readonly AccessTools.FieldRef<Character, ZNetView> NViewRef =
             AccessTools.FieldRefAccess<Character, ZNetView>("m_nview");
 
@@ -39,6 +50,7 @@ namespace BetterCharacterController
 
         private static bool _warnedBadData;
         private static float _lastSend;
+        private static float _lastActive = float.NaN;
         private static float _lastPitch = float.NaN;
         private static float _lastYaw = float.NaN;
 
@@ -88,11 +100,19 @@ namespace BetterCharacterController
         /// Angles are published unclamped, so each viewer can apply its own limits without everyone
         /// having to agree on them.
         /// </summary>
-        internal static void PublishLocal(Character character)
+        internal static void PublishLocal(Character character, bool active)
         {
             try
             {
                 if (!Plugin.LookSyncEnabled.Value || Plugin.LookSyncFaulted) return;
+
+                if (!active)
+                {
+                    // Still has to reach the wire: this is what tells everyone to stop leaning us.
+                    PublishActive(character, false);
+                    return;
+                }
+
                 if (!ComputeAngles(character, out float pitch, out float yaw)) return;
                 Publish(character, pitch, yaw);
             }
@@ -105,8 +125,30 @@ namespace BetterCharacterController
             }
         }
 
+        /// <summary>
+        /// Writes the active flag, and only when it changes. Not rate limited: going inactive has
+        /// to land promptly or the character keeps aiming stale angles on other screens for as long
+        /// as the throttle lasts.
+        /// </summary>
+        private static void PublishActive(Character character, bool active)
+        {
+            ZNetView nview = NViewRef(character);
+            if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
+
+            ZDO zdo = nview.GetZDO();
+            if (zdo == null) return;
+
+            float flag = active ? 1f : 0f;
+            // ReSharper disable once CompareOfFloatsByEqualityOperator both sides are 0f or 1f.
+            if (!float.IsNaN(_lastActive) && _lastActive == flag) return;
+
+            zdo.Set(ActiveKey, flag);
+            _lastActive = flag;
+        }
+
         private static void Publish(Character character, float pitch, float yaw)
         {
+            PublishActive(character, true);
 
             ZNetView nview = NViewRef(character);
             if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
@@ -147,6 +189,11 @@ namespace BetterCharacterController
 
             ZDO zdo = nview.GetZDO();
             if (zdo == null) return false;
+
+            // A peer publishing 0 has the lean suppressed on its own client - in a boat, asleep,
+            // dead, or simply switched off - and must not appear to be aiming. Absent means a peer
+            // on an older build that never published the flag, so treat that as active.
+            if (zdo.GetFloat(ActiveKey, out float activeFlag) && activeFlag < 0.5f) return false;
 
             // The bool overloads distinguish "absent" from "present and zero", which matters:
             // zero pitch is a perfectly normal value.

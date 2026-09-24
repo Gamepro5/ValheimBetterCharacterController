@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.6.0
+
+**Melee swings now go at the angle you actually aimed.** They were landing below the crosshair when
+aiming up, and above it when aiming down — by a little at shallow angles and by a lot at steep ones.
+
+`Attack.GetMeleeAttackDir` keeps the body's horizontal forward but takes only the vertical component
+of the aim direction, then renormalises:
+
+```
+aim = GetAimDir(origin)   // unit vector, so aim.y == sin(pitch)
+aim.x = bodyForward.x
+aim.z = bodyForward.z     // horizontal part now has length 1
+aim.Normalize()
+```
+
+The result has horizontal length 1 and height `sin(pitch)`, so its pitch is `atan(sin(pitch))`, not
+`pitch` — always shallower than you aimed:
+
+| aimed | swing went | off by |
+|------:|-----------:|-------:|
+| 10°   | 9.8°       | 0.2°   |
+| 30°   | 26.6°      | 3.4°   |
+| 45°   | 35.3°      | 9.7°   |
+
+The direction is now rebuilt from the real pitch, still clamped to `maxAngleDegrees`. Only the
+vertical angle changes — horizontally the swing stays on the body's facing, which is vanilla's
+deliberate behaviour and what the swing animation is built around. Applied to the local player only:
+melee damage resolves on the attacker's own client, so that is the only place it changes an outcome,
+and confining it there leaves creature attacks exactly as the game shipped them. New setting
+`01 - Melee aim / exactPitch`, on by default.
+
+Note that melee still sweeps a wide hitbox, so some tolerance around the crosshair is the game's own
+behaviour and remains.
+
+**Remote players no longer appear to be aiming while their lean is suppressed.** Sitting in a boat,
+asleep, dead, mid-attack with `leanDuringAttack` off, or the feature simply switched off — any state
+that stops the lean on your own screen now also stops other people seeing you crane around.
+
+Publishing used to be deliberately independent of display gating, on the reasoning that what others
+see of you should not depend on your own display preferences. That was wrong for *state*: a player
+sitting motionless in a boat locally was still aiming around on everyone else's screen. One
+predicate, `LeanActiveFor`, now drives both.
+
+Because ZDO fields cannot be removed, a `bcc_look_on` flag carries the suppressed state — without it
+the last published angles would linger forever. An **absent** flag is treated as active, so peers on
+older builds keep working exactly as before. The flag is written immediately rather than rate
+limited, since going inactive has to land promptly.
+
+`localPlayerOnly` deliberately does **not** gate publishing: it is a preference about whether you
+render other people's leaning, not a statement that yours is off.
+
 ## 1.5.0
 
 **Holding the use key fills a station at a usable rate.**
