@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+**Holding the use key now ramps up instead of starting at full speed.** At twenty a second from the
+first frame, a single tap fired many times — and on anything that *toggles*, an item stand or a lever,
+that read as the thing being placed and taken back over and over.
+
+It is a keyboard auto-repeat curve now: the press itself always acts once immediately, then nothing
+for `initialDelay`, then repeats beginning at `startInterval` and accelerating to `interval` across
+`rampSeconds`. With the defaults (0.4s, 0.25s, 0.05s, 1s) that is one action on a tap, and full speed
+about 1.4 seconds into a hold.
+
+The prefix now returns false to skip `Player.Interact` when a repeat is not due. That is necessary
+rather than merely tidier: vanilla's own gate allows five a second, which is faster than the start of
+the ramp, so letting the original run would make the early part of the curve meaningless. Vanilla
+also returns having done nothing when its gate blocks, so the outcome is the same by the same
+reasoning. A fault leaves interaction working, since the catch returns true.
+
 ## 1.6.0
 
 **Melee swings now go at the angle you actually aimed.** They were landing below the crosshair when

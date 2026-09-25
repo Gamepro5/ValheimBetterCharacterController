@@ -91,6 +91,9 @@ namespace BetterCharacterController
         // ---- hold to interact ----
         internal static ConfigEntry<bool> FastHoldEnabled;
         internal static ConfigEntry<float> FastHoldInterval;
+        internal static ConfigEntry<float> FastHoldInitialDelay;
+        internal static ConfigEntry<float> FastHoldStartInterval;
+        internal static ConfigEntry<float> FastHoldRampSeconds;
 
         internal static ConfigEntry<bool> DebugLogging;
 
@@ -425,10 +428,31 @@ namespace BetterCharacterController
 
             FastHoldInterval = Config.Bind("08 - Hold to interact", "interval", 0.05f,
                 new ConfigDescription(
-                    "Seconds between repeats while the use key is held. 0.05 is twenty per second. " +
+                    "Fastest seconds between repeats while the use key is held - the floor the ramp " +
+                    "accelerates down to. 0.05 is twenty per second. " +
                     "Each repeat is still a normal interaction, so nothing is duplicated - this " +
                     "only changes how often the game is willing to accept one.",
                     new AcceptableValueRange<float>(0.01f, 1f)));
+
+            FastHoldInitialDelay = Config.Bind("08 - Hold to interact", "initialDelay", 0.4f,
+                new ConfigDescription(
+                    "How long the key must be held before repeats begin at all.\n\n" +
+                    "This is what makes a tap do exactly one thing. Without it, a single press fires " +
+                    "many times, and on anything that TOGGLES - an item stand, a lever - that reads " +
+                    "as the item being placed and taken back over and over.",
+                    new AcceptableValueRange<float>(0f, 2f)));
+
+            FastHoldStartInterval = Config.Bind("08 - Hold to interact", "startInterval", 0.25f,
+                new ConfigDescription(
+                    "Seconds between the first repeats, before the ramp speeds up. Clamped to be " +
+                    "no faster than \"interval\".",
+                    new AcceptableValueRange<float>(0.01f, 1f)));
+
+            FastHoldRampSeconds = Config.Bind("08 - Hold to interact", "rampSeconds", 1f,
+                new ConfigDescription(
+                    "How long the ramp takes to go from startInterval down to interval. 0 skips the " +
+                    "ramp and jumps straight to full speed once initialDelay has passed.",
+                    new AcceptableValueRange<float>(0f, 5f)));
 
             DebugLogging = Config.Bind("99 - Advanced", "debugLogging", false,
                 "Log lean weights, first-person state and dive state once per second.");

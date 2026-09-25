@@ -38,34 +38,92 @@ namespace BetterCharacterController
         /// <summary>The vanilla ceiling in Player.Interact, mirrored so we can undo exactly it.</summary>
         private const float VanillaInteractGate = 0.2f;
 
-        /// <summary>Our own rate limit, standing in for the gate we bypass.</summary>
-        private static float _lastHeldInteract;
+        /// <summary>
+        /// A gap this long between held frames means the key was released and pressed again, so the
+        /// ramp starts over. Only a safety net: a real press arrives as hold == false first.
+        /// </summary>
+        private const float NewHoldGap = 0.25f;
 
+        private static float _holdStarted;
+        private static float _lastHeldInteract;
+        private static float _lastHoldSeen;
+
+        /// <summary>
+        /// The interval required right now, given how long the key has been held.
+        ///
+        /// A keyboard auto-repeat curve: nothing at all for initialDelay, then repeats beginning at
+        /// startInterval and accelerating to the floor across rampSeconds. Without the delay a
+        /// single tap fires many times, which on anything that TOGGLES - an item stand, a lever -
+        /// reads as the thing being placed and taken back over and over.
+        /// </summary>
+        private static float RequiredInterval(float heldFor, out bool allowedYet)
+        {
+            float floor = Mathf.Max(0.01f, Plugin.FastHoldInterval.Value);
+            float delay = Mathf.Max(0f, Plugin.FastHoldInitialDelay.Value);
+
+            allowedYet = heldFor >= delay;
+            if (!allowedYet) return floor;
+
+            // Never slower than the floor, whatever the config says, so the two cannot cross over.
+            float startAt = Mathf.Max(floor, Plugin.FastHoldStartInterval.Value);
+            float ramp = Mathf.Max(0f, Plugin.FastHoldRampSeconds.Value);
+            if (ramp <= 0f) return floor;
+
+            float t = Mathf.Clamp01((heldFor - delay) / ramp);
+            return Mathf.Lerp(startAt, floor, t);
+        }
+
+        /// <summary>
+        /// Returns false to skip Player.Interact when a repeat is not due yet.
+        ///
+        /// Skipping is necessary rather than merely not helping: vanilla's own gate allows five a
+        /// second, which is faster than the start of the ramp, so leaving the original to run would
+        /// make the early part of the curve meaningless. Vanilla's behaviour when its gate blocks is
+        /// also to return having done nothing, so this is the same outcome by the same reasoning.
+        ///
+        /// A fresh press arrives with hold == false and is never touched, so the first interaction
+        /// is always immediate.
+        /// </summary>
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Player), "Interact")]
-        private static void BeforeInteract(Player __instance, bool hold)
+        private static bool BeforeInteract(Player __instance, bool hold)
         {
-            if (!hold || !Plugin.FastHoldEnabled.Value || Plugin.FastHoldFaulted) return;
+            if (!Plugin.FastHoldEnabled.Value || Plugin.FastHoldFaulted) return true;
 
             try
             {
-                float interval = Mathf.Max(0.01f, Plugin.FastHoldInterval.Value);
-                if (interval >= VanillaInteractGate) return;   // nothing to gain
+                if (!hold)
+                {
+                    // The press itself: let it through untouched and start the ramp from here.
+                    _holdStarted = Time.time;
+                    _lastHoldSeen = Time.time;
+                    _lastHeldInteract = Time.time;
+                    return true;
+                }
 
-                if (Time.time - _lastHeldInteract < interval) return;
+                if (Time.time - _lastHoldSeen > NewHoldGap) _holdStarted = Time.time;
+                _lastHoldSeen = Time.time;
+
+                float required = RequiredInterval(Time.time - _holdStarted, out bool allowedYet);
+                if (!allowedYet) return false;
+                if (Time.time - _lastHeldInteract < required) return false;
+
                 _lastHeldInteract = Time.time;
 
                 // Present the field as exactly old enough to clear the 0.2s test. Vanilla
                 // overwrites it with Time.time as soon as it accepts the interaction, so this does
                 // not accumulate.
                 LastHoverInteractRef(__instance) = Time.time - VanillaInteractGate;
+                return true;
             }
             catch (System.Exception e)
             {
                 // Session-only flag: writing the config entry would persist to disk and leave the
-                // feature switched off after a restart for no visible reason.
+                // feature switched off after a restart for no visible reason. Returning true also
+                // matters here - a fault must not leave interaction blocked.
                 Plugin.Log.LogWarning($"fast hold interact failed, disabling for this session: {e.Message}");
                 Plugin.FastHoldFaulted = true;
+                return true;
             }
         }
 
@@ -80,6 +138,8 @@ namespace BetterCharacterController
             float current = __instance.m_holdRepeatInterval;
             if (current <= 0f) return;
 
+            // Shortened to the floor, not to the ramp's current value: the ramp is enforced above,
+            // and this only has to stop the switch's own long interval blocking a repeat we allow.
             float interval = Mathf.Max(0.01f, Plugin.FastHoldInterval.Value);
             if (current > interval) __instance.m_holdRepeatInterval = interval;
         }
