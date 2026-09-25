@@ -2,20 +2,25 @@
 
 ## Unreleased
 
-**Holding the use key now ramps up instead of starting at full speed.** At twenty a second from the
-first frame, a single tap fired many times — and on anything that *toggles*, an item stand or a lever,
-that read as the thing being placed and taken back over and over.
+**Fixes 2.2, where holding to interact worked only sometimes.** Two separate mistakes, both mine.
 
-It is a keyboard auto-repeat curve now: the press itself always acts once immediately, then nothing
-for `initialDelay`, then repeats beginning at `startInterval` and accelerating to `interval` across
-`rampSeconds`. With the defaults (0.4s, 0.25s, 0.05s, 1s) that is one action on a tap, and full speed
-about 1.4 seconds into a hold.
+**The prefix must never suppress an interaction.** 2.2 returned false to skip `Player.Interact` when a
+repeat was not due. Holding to deposit into a container is vanilla's quick-stack, driven by repeated
+held calls, so starving those calls stopped it happening at all. The prefix is `void` again and can
+only ever let *more* through than vanilla, by back-dating its timestamp. When it declines to
+intervene, the original runs untouched and the game's own 0.2s gate applies — five a second, the rate
+the game ships — so nothing can end up worse than vanilla.
 
-The prefix now returns false to skip `Player.Interact` when a repeat is not due. That is necessary
-rather than merely tidier: vanilla's own gate allows five a second, which is faster than the start of
-the ramp, so letting the original run would make the early part of the curve meaningless. Vanilla
-also returns having done nothing when its gate blocks, so the outcome is the same by the same
-reasoning. A fault leaves interaction working, since the catch returns true.
+**The ramp timers are now per-target.** They were global, which is what made it feel random.
+`Player.Update` guards the press call on `m_hovering`, so pressing while looking at nothing sends no
+press at all — and then aiming at a station inherited whatever the previous object left behind:
+sometimes mid-ramp and instantly fast, sometimes freshly reset. The ramp now restarts whenever the
+hovered object changes.
+
+**Holding the use key ramps up instead of starting at full speed.** At twenty a second from the first
+frame a single tap fired many times, and on anything that toggles — an item stand, a lever — that read
+as the thing being placed and taken back repeatedly. Now vanilla's own rate until `initialDelay`, then
+accelerating from `startInterval` to `interval` across `rampSeconds`.
 
 ## 1.6.0
 
