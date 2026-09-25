@@ -55,7 +55,23 @@ namespace BetterCharacterController
         /// station would otherwise inherit whatever state the last object left behind - sometimes
         /// mid-ramp and instantly fast, sometimes freshly reset. That is what made this feel random.
         /// </summary>
-        private static GameObject _holdTarget;
+        private static object _holdTarget;
+
+        /// <summary>
+        /// What the hover is really pointing at: the Interactable, not the collider.
+        ///
+        /// m_hovering is whichever child GameObject the ray struck, and a station can present
+        /// several - the body, the ore chute, the fuel slot. Keying the ramp on the GameObject
+        /// would restart it whenever the ray wandered between them, which is the same "holding
+        /// does nothing" symptom by a different route. Player.Interact resolves the target with
+        /// GetComponentInParent&lt;Interactable&gt;, so this matches what actually gets interacted with.
+        /// </summary>
+        private static object TargetOf(GameObject go)
+        {
+            if (go == null) return null;
+            Interactable interactable = go.GetComponentInParent<Interactable>();
+            return interactable != null ? (object)interactable : go;
+        }
 
         /// <summary>
         /// The interval we want right now, given how long the key has been held.
@@ -104,13 +120,15 @@ namespace BetterCharacterController
 
             try
             {
-                // A different object, or a gap long enough to mean the key was released: start over.
-                bool restart = go != _holdTarget || Time.time - _lastHoldSeen > NewHoldGap;
+                // A different interactable, or a gap long enough to mean the key was released.
+                object target = TargetOf(go);
+                bool restart = !ReferenceEquals(target, _holdTarget)
+                               || Time.time - _lastHoldSeen > NewHoldGap;
 
                 if (!hold)
                 {
                     // The press itself. Never touched, and it starts the ramp from here.
-                    _holdTarget = go;
+                    _holdTarget = target;
                     _holdStarted = Time.time;
                     _lastHoldSeen = Time.time;
                     _lastHeldInteract = Time.time;
@@ -119,7 +137,7 @@ namespace BetterCharacterController
 
                 if (restart)
                 {
-                    _holdTarget = go;
+                    _holdTarget = target;
                     _holdStarted = Time.time;
                     _lastHeldInteract = Time.time;
                 }
