@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0
+
+**Melee swings aim at what the crosshair is on, not parallel to the camera.** Looking slightly
+down at a tree put the axe into the ground well below the crosshair.
+
+The swing starts at the attack joint, about chest height and in front of the camera, but 1.6.0
+gave it the camera's pitch. A line leaving the chest parallel to the camera ray lands short of and
+below the target, and the steeper the look, the worse it gets. Vanilla has the same flaw, partly
+hidden by its shallower pitch, which 1.6.0 corrected.
+
+The swing's pitch is now taken from its real origin to the point the camera ray hits, using the
+game's own attack masks so the crosshair sees what a swing can hit. With nothing under the
+crosshair it aims at a point 50 m out along the camera ray, which is effectively the camera pitch.
+Still vertical only, still clamped to `maxAngleDegrees`, still local player only.
+
 ## Unreleased
 
 **Fixes 2.2, where holding to interact worked only sometimes.** Two separate mistakes, both mine.

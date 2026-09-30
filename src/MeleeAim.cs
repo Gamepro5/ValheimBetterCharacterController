@@ -29,8 +29,13 @@ namespace BetterCharacterController
     ///        aim 10 deg -> 9.8    aim 30 deg -> 26.6    aim 45 deg -> 35.3
     ///
     ///    Aiming upward, the swing therefore lands BELOW the crosshair, and aiming down it lands
-    ///    above it, by up to about ten degrees at the extremes. Rebuilding the direction from the
-    ///    real pitch removes that.
+    ///    above it, by up to about ten degrees at the extremes.
+    ///
+    /// 3. Even the true camera pitch is the wrong angle, because the swing does not start at the
+    ///    camera. It starts at the attack joint, lower down and in front, so a swing parallel to
+    ///    the camera ray lands short of and below the crosshair - aim slightly down at a tree and
+    ///    the axe hits the ground. The pitch is therefore taken from the swing's origin to the
+    ///    point the camera ray actually hits.
     ///
     /// Only the vertical angle is corrected. Horizontally the swing stays on the body's facing,
     /// which is vanilla's deliberate behaviour and what the swing animation is built around.
@@ -60,7 +65,7 @@ namespace BetterCharacterController
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Attack), "GetMeleeAttackDir")]
         private static void AfterGetMeleeAttackDir(Attack __instance, float __state,
-                                                   ref Vector3 attackDir)
+                                                   Transform originJoint, ref Vector3 attackDir)
         {
             // Always restore, even when disabled mid-session.
             __instance.m_maxYAngle = __state;
@@ -79,13 +84,15 @@ namespace BetterCharacterController
                 if (bodyForward.sqrMagnitude < 1e-6f) return;
                 bodyForward.Normalize();
 
-                Vector3 look = character.GetLookDir();
-                if (look.sqrMagnitude < 1e-6f) return;
-                look.Normalize();
+                if (originJoint == null) return;
+                Vector3 origin = originJoint.position
+                                 + Vector3.up * __instance.m_attackHeight
+                                 + character.transform.right * __instance.m_attackOffset;
 
-                // The angle the crosshair is actually at, rather than one recovered from a
-                // renormalised vector.
-                float pitch = Mathf.Asin(Mathf.Clamp(look.y, -1f, 1f)) * Mathf.Rad2Deg;
+                Vector3 aim = AimFromOrigin(character, origin);
+                if (aim.sqrMagnitude < 1e-6f) return;
+
+                float pitch = Mathf.Asin(Mathf.Clamp(aim.y, -1f, 1f)) * Mathf.Rad2Deg;
 
                 // Respect the same cap the section is configured with, so raising accuracy cannot
                 // quietly widen the range beyond what the player asked for.
@@ -107,5 +114,67 @@ namespace BetterCharacterController
                 Plugin.MeleeExactPitchFaulted = true;
             }
         }
+
+        private const float AimRayLength = 50f;
+        private static readonly RaycastHit[] AimHits = new RaycastHit[32];
+
+        /// <summary>
+        /// Unit direction from the swing's origin to whatever the crosshair is on.
+        ///
+        /// The camera's own pitch is the wrong angle to swing at: the swing starts at the attack
+        /// joint, well below the camera and (in third person) in front of it, so a line leaving
+        /// the chest parallel to the camera ray lands short of and below the target. Aiming
+        /// slightly down at a tree put the axe into the ground in front of it. Converging on the
+        /// point the camera ray actually hits fixes that at any distance.
+        ///
+        /// Uses the game's own attack masks, so the crosshair "sees" exactly what a swing can hit.
+        /// Falls back to a point far along the camera ray when it hits nothing, which converges on
+        /// the camera's pitch.
+        /// </summary>
+        private static Vector3 AimFromOrigin(Humanoid character, Vector3 origin)
+        {
+            GameCamera cam = GameCamera.instance;
+            Vector3 camPos, camFwd;
+            if (cam != null)
+            {
+                camPos = cam.transform.position;
+                camFwd = cam.transform.forward;
+            }
+            else
+            {
+                camPos = character.GetEyePoint();
+                camFwd = character.GetLookDir();
+            }
+
+            Vector3 target = camPos + camFwd * AimRayLength;
+
+            int mask = AttackMaskRef() | AttackMaskTerrainRef();
+            if (mask != 0)
+            {
+                int n = Physics.RaycastNonAlloc(camPos, camFwd, AimHits, AimRayLength, mask,
+                                                QueryTriggerInteraction.Ignore);
+                float best = float.MaxValue;
+                for (int i = 0; i < n; i++)
+                {
+                    RaycastHit hit = AimHits[i];
+                    if (hit.distance >= best) continue;
+                    // Our own body sits on the ray in first person and near it in third.
+                    if (hit.collider.GetComponentInParent<Character>() == character) continue;
+                    // A hit between the camera and the swing (third person, something behind
+                    // us) is not what we are aiming at.
+                    if (Vector3.Dot(hit.point - origin, camFwd) <= 0f) continue;
+                    best = hit.distance;
+                    target = hit.point;
+                }
+            }
+
+            return (target - origin).normalized;
+        }
+
+        private static readonly AccessTools.FieldRef<int> AttackMaskRef =
+            AccessTools.StaticFieldRefAccess<int>(AccessTools.Field(typeof(Attack), "m_attackMask"));
+
+        private static readonly AccessTools.FieldRef<int> AttackMaskTerrainRef =
+            AccessTools.StaticFieldRefAccess<int>(AccessTools.Field(typeof(Attack), "m_attackMaskTerrain"));
     }
 }
